@@ -98,7 +98,7 @@ def fit_state_space_with_g_func():
 
     # os.chdir("D:\Studium\Auslandsstudium\TuitionWaver_Master\Masterthesis\Analysis\Exp_Variance\Exp_Variance_MissingsReplaced\SubjData\processed")
     # data_dir = "D:\Studium\Auslandsstudium\TuitionWaver_Master\Masterthesis\Analysis\Exp_Variance\Exp_Variance_MissingsReplaced\SubjData\processed"
-    f_name = 'master_data.csv'
+    f_name = '../fit_input/master_data.csv'
 
     d = pd.read_csv(f_name)
     sub = d['sub'].unique()
@@ -140,7 +140,7 @@ def fit_state_space_with_g_func():
 
         p_rec = np.append(p_rec, [p], axis=0)
 
-        f_name_p = "./fits/fit_" + str(sub[i])
+        f_name_p = "../fits/fit_" + str(sub[i])
         with open(f_name_p, "w") as f:
             np.savetxt(f, p, "%0.4f", ",")
 
@@ -220,7 +220,7 @@ def inspect_fits():
     # plt.savefig(path + "\\" + f_names[i] + ".png")
     # plt.close()'''
 
-    f_name = 'master_data.csv'
+    f_name = '../fit_input/master_data.csv'
     d = pd.read_csv(f_name)
     sub = d['sub'].unique()
     length_names = sub.shape[0]
@@ -246,12 +246,12 @@ def inspect_fits():
         plt.plot(x_pred)
         # plt.show()
 
-        plt.savefig('./figures/fit_' + str(sub[i]) + ".png")
+        plt.savefig('../figures/fit_' + str(sub[i]) + ".png")
         plt.close()
 
 
 def inspect_fits_fancy():
-    f_name = 'master_data.csv'
+    f_name = '../fit_input/master_data.csv'
     d = pd.read_csv(f_name)
     sub = d['sub'].unique()
     length_names = sub.shape[0]
@@ -264,6 +264,7 @@ def inspect_fits_fancy():
     #                     values="Endpoint_Error")
     # x_obs = x_obs.values
 
+    rot = d["Appl_Perturb"].values # TODO: Something like this?
     x_obs = d.groupby(['cnd', 'trial',
                        'target_deg']).Endpoint_Error.mean().reset_index()
     x_obs_1 = x_obs[x_obs['cnd'] == 0]

@@ -18,7 +18,7 @@ phase_order <- 1:9
 
 ldf_rec <- list()
 for (i in 1:length(phase_names)) {
-    f_names <- list.files(paste('./SubjData/', sep=''),
+    f_names <- list.files(paste('../data/', sep=''),
                           pattern=paste(phase_names[i]),
                           full.names=TRUE)
 
@@ -71,24 +71,50 @@ d[rot_dir == 'cw' &
 
 ## NOTE: add phase means for baseline correction
 d[, ee_mean := mean(Endpoint_Error, na.rm=T), .(sub, phase, Target)]
-d[, ee_mean_correction := ee_mean[which(phase=="Baseline_S")][1], .(Target)]
+d[, ee_mean_correction_fb := ee_mean[which(phase=="Baseline_S")][1], .(Target, rot_dir)]
+d[, ee_mean_correction_nfb := ee_mean[which(phase=="Baseline_NFB")][1], .(Target, rot_dir)]
 
 ## NOTE: Perform baseline correction
 d[, bcee := Endpoint_Error]
-d[phase %in% c("Generalisation"), bcee := Endpoint_Error - ee_mean_correction]
+d[phase %in% c("Generalisation", "Washout"), bcee := Endpoint_Error - ee_mean_correction_nfb]
+d[phase %in% c("Postbaseline", "Training", "Relearning"), bcee := Endpoint_Error - ee_mean_correction_fb]
 
 ## NOTE: plot all trials collapsed over CW / CCW
 dd <- d[, .(mean(Endpoint_Error, na.rm=T), sd(Endpoint_Error, na.rm=T)/sqrt(16)), .(cnd, trial)]
 ggplot(dd, aes(trial, V1, colour=as.factor(cnd))) +
-    geom_point(alpha=1)
-    ## geom_ribbon(aes(ymin=V1-V2, ymax=V1+V2), alpha=0.2)
-ggsave('./figures/learning_curves.pdf', width=10, height=4)
+    geom_point(alpha=0.4)
+ggsave('../figures/learning_curves.pdf', width=10, height=4)
+
+## NOTE: plot learning curves per cnd
+dd <- d[, .(mean(Endpoint_Error, na.rm=T), sd(Endpoint_Error, na.rm=T)/sqrt(16)), .(cnd, trial)]
+ggplot(dd, aes(trial, V1, colour=as.factor(cnd))) +
+    geom_point(alpha=1.0) +
+    facet_wrap(~cnd)
+ggsave('../figures/learning_curves_percnd.pdf', width=10, height=4)
+
+
+## NOTE: plot all trials expanded over CW / CCW
+dd <- d[, .(mean(Endpoint_Error, na.rm=T), sd(Endpoint_Error, na.rm=T)/sqrt(16)), .(cnd, trial, rot_dir)]
+ggplot(dd, aes(trial, V1, colour=as.factor(cnd))) +
+    geom_point(alpha=0.4) +
+    facet_wrap(~rot_dir)
+ggsave('../figures/learning_curves_cwccw.pdf', width=10, height=4)
+
 
 ## NOTE: plot all trials separate over CW / CCW
 dd <- d[, mean(Endpoint_Error, na.rm=T), .(cnd, trial, rot_dir, aware)]
 ggplot(dd, aes(trial, V1, colour=as.factor(cnd))) +
     geom_point(alpha=0.1) +
     facet_wrap(~rot_dir*aware)
+
+## NOTE: take a look at prebaseline
+dd <- d[phase == 'Prebaseline',
+        mean(Endpoint_Error, na.rm=T),
+        .(cnd, trial, rot_dir)]
+ggplot(dd, aes(V1, fill=as.factor(cnd))) +
+    geom_histogram(alpha=0.75) +
+    facet_wrap(~rot_dir*cnd)
+ggsave('../figures/prebaseline.pdf', width=8, height=6)
 
 ## NOTE: add target_deg indicator column
 d[, target_deg := -1]
@@ -105,9 +131,9 @@ d[Target == 10, target_deg := -90]
 d[Target == 11, target_deg := -60]
 d[Target == 12, target_deg := -30]
 
-## Plot generalisation function
+## NOTE: Plot generalisation function --- no baseline correction
 dd <- d[phase == "Generalisation",
-        .(mean(bcee, na.rm = TRUE), sd(bcee, na.rm = TRUE)/sqrt(.N)),
+        .(mean(Endpoint_Error, na.rm = T), sd(Endpoint_Error, na.rm = T)/sqrt(.N)),
         .(cnd, target_deg, rot_dir)]
 
 ggplot(dd, aes(x = target_deg, y = V1, colour = as.factor(cnd))) +
@@ -116,10 +142,49 @@ ggplot(dd, aes(x = target_deg, y = V1, colour = as.factor(cnd))) +
     scale_x_continuous(breaks=c(0,30,60,90,120,150,-150,-120,-90,-60,-30)) +
     xlim(-150, 150) +
     facet_wrap(~rot_dir)
-ggsave('./figures/generalisation.pdf', width=10, height=4)
+ggsave('../figures/generalisation_ee.pdf', width=10, height=4)
 
-## NOTE: for model fitting, convert everything to look ccw
-## NOTE: we already did this above for Endpoint_Error
+
+## NOTE: Plot generalisation function --- no baseline correction
+dd <- d[phase == "Generalisation",
+        .(mean(bcee, na.rm = T), sd(bcee, na.rm = T)/sqrt(.N)),
+        .(cnd, target_deg, rot_dir)]
+
+ggplot(dd, aes(x = target_deg, y = V1, colour = as.factor(cnd))) +
+    geom_line() +
+    geom_errorbar(aes(ymin=V1-V2, ymax=V1+V2), width=10) +
+    scale_x_continuous(breaks=c(0,30,60,90,120,150,-150,-120,-90,-60,-30)) +
+    xlim(-150, 150) +
+    facet_wrap(~rot_dir)
+ggsave('../figures/generalisation_bcee.pdf', width=10, height=4)
+
+
+## NOTE: Does "aware" matter?
+dd <- d[phase == "Generalisation",
+        .(mean(bcee, na.rm = T), sd(bcee, na.rm = T)/sqrt(.N)),
+        .(cnd, target_deg, rot_dir, aware)]
+
+ggplot(dd, aes(x = target_deg, y = V1, colour = as.factor(cnd))) +
+    geom_line() +
+    geom_errorbar(aes(ymin=V1-V2, ymax=V1+V2), width=10) +
+    scale_x_continuous(breaks=c(0,30,60,90,120,150,-150,-120,-90,-60,-30)) +
+    xlim(-150, 150) +
+    facet_wrap(~aware*rot_dir)
+ggsave('../figures/generalisation_bcee_aware.pdf', width=10, height=8)
+
+
+## NOTE: Collapse across cw / ccw
+dd <- d[phase == "Generalisation",
+        .(mean(bcee, na.rm = T), sd(bcee, na.rm = T)/sqrt(.N)),
+        .(cnd, target_deg)]
+
+ggplot(dd, aes(x = target_deg, y = V1, colour = as.factor(cnd))) +
+    geom_line() +
+    geom_errorbar(aes(ymin=V1-V2, ymax=V1+V2), width=10) +
+    scale_x_continuous(breaks=c(0,30,60,90,120,150,-150,-120,-90,-60,-30)) +
+    xlim(-150, 150)
+ggsave('../figures/generalisation_bcee_collapsed.pdf', width=10, height=8)
+
 
 ## NOTE: write master data.table to a csv for reading into Python
 fwrite(d, 'master_data.csv')
