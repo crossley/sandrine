@@ -184,6 +184,49 @@ def fit_obj_func_sse_2_state(params, *args):
 
     return (sse)
 
+def fit_state_space_with_g_func_grp():
+    f_name = '../fit_input/master_data.csv'
+
+    d = pd.read_csv(f_name)
+    p_rec = np.empty((0, 3))
+
+    rot = d[d['sub'] == 1]['Appl_Perturb'].values
+
+    x_obs_all = d.groupby(['cnd', 'Target', 'trial']).mean()
+    x_obs_all.reset_index(inplace=True)
+
+    for i in range(x_obs_all['cnd'].unique().shape[0]):
+        x_obs = x_obs_all[x_obs_all['cnd'] == i]
+        x_obs = x_obs[["Endpoint_Error", "Target", "target_deg", "trial"]]
+        x_obs = x_obs.pivot(index="trial",
+                            columns="target_deg",
+                            values="Endpoint_Error")
+
+        x_obs = x_obs.values
+
+        args = (x_obs, rot)
+        bounds = ((0, 1), (0, 1), (0, 60))
+        results = differential_evolution(func=fit_obj_func_sse,
+                                        bounds=bounds,
+                                        args=args,
+                                        maxiter=300,
+                                        disp=False,
+                                        polish=True,
+                                        updating="deferred",
+                                        workers=-1)
+        p = results["x"]
+        x_pred = simulate_state_space_with_g_func(p, rot)
+
+        c = cm.rainbow(np.linspace(0, 1, 12))
+
+        p_rec = np.append(p_rec, [p], axis=0)
+
+        f_name_p = "../fits/fit_grp_" + str(i)
+        with open(f_name_p, "w") as f:
+            np.savetxt(f, p, "%0.4f", ",")
+
+    return p_rec
+
 
 def fit_state_space_with_g_func_2_state_grp():
     f_name = '../fit_input/master_data.csv'
@@ -392,15 +435,15 @@ def inspect_fits_grp():
 
         fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(14, 6))
 
-        # # NOTE: 1 state
-        # params = np.loadtxt("../fits/fit_grp" + str(sub[i]))
-        # x_pred = simulate_state_space_with_g_func(params, rot)
+        # NOTE: 1 state
+        params = np.loadtxt("../fits/fit_grp_" + str(i))
+        x_pred = simulate_state_space_with_g_func(params, rot)
 
-        # for ii in range(12):
-        #     ax[0].scatter(np.arange(0, x_obs.shape[0]),
-        #                   x_obs[:, ii],
-        #                   alpha=0.2)
-        # ax[0].plot(x_pred)
+        for ii in range(12):
+            ax[0].scatter(np.arange(0, x_obs.shape[0]),
+                          x_obs[:, ii],
+                          alpha=0.2)
+        ax[0].plot(x_pred)
 
         # NOTE: 2 state
         params = np.loadtxt("../fits/fit_2state_grp_" + str(i))
@@ -598,7 +641,8 @@ def inspect_fits_fancy():
 # simulate_state_space_with_g_func()
 # fit_state_space_with_g_func()
 # fit_state_space_with_g_func_2_state()
-fit_state_space_with_g_func_2_state_grp()
+# fit_state_space_with_g_func_grp()
+# fit_state_space_with_g_func_2_state_grp()
 # inspect_fits_fancy() # TODO: something is goofy
 # inspect_fits()
 inspect_fits_grp()
