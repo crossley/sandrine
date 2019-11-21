@@ -8,6 +8,79 @@ import os as os
 import re as re
 
 
+def simulate_state_space_with_g_func_2_state(p, rot):
+    alpha_s = p[0]
+    beta_s = p[1]
+    g_sigma_s = p[2]
+    alpha_f = p[3]
+    beta_f = p[4]
+    g_sigma_f = p[5]
+    """
+    Define experiment
+    Simple state-space model predictions:
+    N per Block:
+    1:     Prebaseline 120
+    2: Familiarisation 120
+    3:    Baseline_NFB  96
+    4:        Baseline 144
+    5:        Training 400
+    6:  Generalisation  72
+    7:      Relearning 100
+    8:         Washout 100
+    """
+    num_trials = rot.shape[0]
+
+    delta = np.zeros(num_trials)
+
+    theta_values = np.linspace(0.0, 330.0, 12) - 150.0
+    theta_train_ind = np.where(theta_values == 0.0)[0][0]
+    theta_ind = theta_train_ind * np.ones(num_trials, dtype=np.int8)
+
+    def g_func(theta, theta_mu, sigma):
+        if sigma != 0:
+            G = np.exp(-(theta - theta_mu)**2 / (2 * sigma**2))
+        else:
+            G = np.zeros((12, 1))
+        return (G)
+
+    # Just do training
+    n_simulations = 100
+    xs = np.zeros((12, num_trials))
+    xf = np.zeros((12, num_trials))
+    for i in range(0, num_trials - 1):
+        if i > 1000 and i <= 1072:
+            delta[i] = 0.0
+        else:
+            delta[i] = xs[theta_ind[i], i] - rot[i]
+
+        Gs = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_s)
+        Gf = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_f)
+        if np.isnan(rot[i]):
+            xs[:, i + 1] = beta_s * xs[:, i]
+            xf[:, i + 1] = beta_f * xf[:, i]
+        else:
+            xs[:, i + 1] = beta_s * xs[:, i] - alpha_s * delta[i] * Gs
+            xf[:, i + 1] = beta_f * xf[:, i] - alpha_f * delta[i] * Gf
+    """
+    for i in range(len(rot_type)):
+        temp = 221 + i
+        plt.subplot(temp)
+        plt.ylim(-35, 35)
+        plt.plot(rot_type[i])
+        for j in range(12):
+            plt.plot(xs_type[i][:, j])
+    """
+
+    # plt.subplot(121)
+    # plt.plot(G)
+
+    # plt.subplot(122)
+    # plt.plot(rot, '-k')
+    # for i in range(12):
+    #    plt.plot(xs[i, :])
+    return (xs.T + xf.T)
+
+
 def simulate_state_space_with_g_func(p, rot):
     alpha = p[0]
     beta = p[1]
@@ -28,7 +101,6 @@ def simulate_state_space_with_g_func(p, rot):
     num_trials = rot.shape[0]
 
     delta = np.zeros(num_trials)
-    g = np.zeros((12, 1))
 
     theta_values = np.linspace(0.0, 330.0, 12) - 150.0
     theta_train_ind = np.where(theta_values == 0.0)[0][0]
@@ -86,6 +158,74 @@ def fit_obj_func_sse(params, *args):
         sse_rec[i] = (np.nansum((x_obs[:, i] - x_pred[:, i])**2))
     sse = np.nansum(sse_rec)
     return (sse)
+
+
+def fit_obj_func_sse_2_state(params, *args):
+    alpha_s = params[0]
+    beta_s = params[1]
+    g_sigma_s = params[2]
+    alpha_f = params[3]
+    beta_f = params[4]
+    g_sigma_f = params[5]
+
+    if alpha_s >= alpha_f:
+        sse = 10**100
+    elif beta_s <= beta_f:
+        sse = 10**100
+    else:
+        x_obs = args[0]
+        rot = args[1]
+        x_pred = simulate_state_space_with_g_func_2_state(params, rot)
+
+        sse_rec = np.zeros(12)
+        for i in range(12):
+            sse_rec[i] = (np.nansum((x_obs[:, i] - x_pred[:, i])**2))
+        sse = np.nansum(sse_rec)
+
+    return (sse)
+
+
+def fit_state_space_with_g_func_2_state():
+    f_name = '../fit_input/master_data.csv'
+
+    d = pd.read_csv(f_name)
+    sub = d['sub'].unique()
+    length_names = sub.shape[0]
+
+    p_rec = np.empty((0, 6))
+    for i in range(length_names):
+        print(sub[i])
+        x_obs = d[d['sub'] == sub[i]]
+        rot = x_obs["Appl_Perturb"].values
+        x_obs = x_obs[["Endpoint_Error", "Target", "target_deg", "trial"]]
+        x_obs = x_obs.pivot(index="trial",
+                            columns="target_deg",
+                            values="Endpoint_Error")
+
+        x_obs = x_obs.values
+
+        args = (x_obs, rot)
+        bounds = ((0, 1), (0, 1), (0, 60), (0, 1), (0, 1), (0, 60))
+        results = differential_evolution(func=fit_obj_func_sse_2_state,
+                                         bounds=bounds,
+                                         args=args,
+                                         maxiter=300,
+                                         disp=False,
+                                         polish=True,
+                                         updating="deferred",
+                                         workers=-1)
+        p = results["x"]
+        x_pred = simulate_state_space_with_g_func(p, rot)
+
+        c = cm.rainbow(np.linspace(0, 1, 12))
+
+        p_rec = np.append(p_rec, [p], axis=0)
+
+        f_name_p = "../fits/fit_2state" + str(sub[i])
+        with open(f_name_p, "w") as f:
+            np.savetxt(f, p, "%0.4f", ",")
+
+    return p_rec
 
 
 def fit_state_space_with_g_func():
@@ -235,18 +375,39 @@ def inspect_fits():
                             values="Endpoint_Error")
         x_obs = x_obs.values
 
-        params = np.loadtxt("./fits/fit_" + str(sub[i]))
+        fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(14, 6))
+
+        # NOTE: 1 state
+        params = np.loadtxt("../fits/fit_" + str(sub[i]))
         x_pred = simulate_state_space_with_g_func(params, rot)
 
-        fig = plt.figure(figsize=(6, 6))
+        # fig = plt.figure(figsize=(6, 6))
         # plt.plot(rot, '-k')
         # plt.plot(x_obs[:, 5], alpha=1, linestyle="-")
         for ii in range(12):
-            plt.scatter(np.arange(0, x_obs.shape[0]), x_obs[:, ii])
-        plt.plot(x_pred)
+            ax[0].scatter(np.arange(0, x_obs.shape[0]), x_obs[:, ii], alpha=0.2)
+        ax[0].plot(x_pred)
         # plt.show()
 
-        plt.savefig('../figures/fit_' + str(sub[i]) + ".png")
+        # plt.savefig('../figures/fit_' + str(sub[i]) + ".png")
+        # plt.close()
+
+        # NOTE: 2 state
+        params = np.loadtxt("../fits/fit_2state" + str(sub[i]))
+        x_pred = simulate_state_space_with_g_func_2_state(params, rot)
+
+        # fig = plt.figure(figsize=(6, 6))
+        # plt.plot(rot, '-k')
+        # plt.plot(x_obs[:, 5], alpha=1, linestyle="-")
+        for ii in range(12):
+            ax[1].scatter(np.arange(0, x_obs.shape[0]), x_obs[:, ii], alpha=0.2)
+        ax[1].plot(x_pred)
+        # plt.show()
+
+        # plt.savefig('../figures/fit_2state_' + str(sub[i]) + ".png")
+        # plt.close()
+
+        plt.savefig('../figures/fit_combined_' + str(sub[i]) + ".png")
         plt.close()
 
 
@@ -264,7 +425,7 @@ def inspect_fits_fancy():
     #                     values="Endpoint_Error")
     # x_obs = x_obs.values
 
-    rot = d["Appl_Perturb"].values # TODO: Something like this?
+    rot = d["Appl_Perturb"].values  # TODO: Something like this?
     x_obs = d.groupby(['cnd', 'trial',
                        'target_deg']).Endpoint_Error.mean().reset_index()
     x_obs_1 = x_obs[x_obs['cnd'] == 0]
@@ -290,7 +451,7 @@ def inspect_fits_fancy():
     x_pred_2 = []
     x_pred_3 = []
     for i in range(0, length_names):
-        params = np.loadtxt("./fits/fit_" + str(sub[i]))
+        params = np.loadtxt("../fits/fit_" + str(sub[i]))
         x_pred = simulate_state_space_with_g_func(params, rot)
 
         if d[d['sub'] == i + 1]['cnd'].unique()[0] == 0:
@@ -319,15 +480,24 @@ def inspect_fits_fancy():
 
     # for ii in range(12):
     ii = 5
-    plt.scatter(np.arange(0, x_obs_1.shape[0]), x_obs_1[:, ii], c='r', alpha = 0.2)
+    plt.scatter(np.arange(0, x_obs_1.shape[0]),
+                x_obs_1[:, ii],
+                c='r',
+                alpha=0.2)
     plt.plot(x_pred_1_mean[:, ii], '-r')
     plt.ylim(-30, 30)
 
-    plt.scatter(np.arange(0, x_obs_2.shape[0]), x_obs_2[:, ii], c='g', alpha = 0.2)
+    plt.scatter(np.arange(0, x_obs_2.shape[0]),
+                x_obs_2[:, ii],
+                c='g',
+                alpha=0.2)
     plt.plot(x_pred_2_mean[:, ii], '-g')
     plt.ylim(-30, 30)
 
-    plt.scatter(np.arange(0, x_obs_3.shape[0]), x_obs_3[:, ii], c='b', alpha = 0.2)
+    plt.scatter(np.arange(0, x_obs_3.shape[0]),
+                x_obs_3[:, ii],
+                c='b',
+                alpha=0.2)
     plt.plot(x_pred_3_mean[:, ii], '-b')
     plt.ylim(-30, 30)
 
@@ -335,6 +505,7 @@ def inspect_fits_fancy():
 
 
 # simulate_state_space_with_g_func()
-fit_state_space_with_g_func()
-inspect_fits_fancy()
+# fit_state_space_with_g_func()
+# fit_state_space_with_g_func_2_state()
+# inspect_fits_fancy() # TODO: something is goofy
 inspect_fits()

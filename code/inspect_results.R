@@ -59,9 +59,9 @@ d[, rot_dir := 'cw']
 d[sub %in% subs_ccw, rot_dir := 'ccw']
 
 ## NOTE: flip rot_dir so that everybody can be plotted in the same space
-d[rot_dir == 'cw' &
-  phase %in% c('Training', 'Generalisation', 'Relearning', 'Washout'),
-  Endpoint_Error := -1 * Endpoint_Error]
+## d[rot_dir == 'cw' &
+##   phase %in% c('Training', 'Generalisation', 'Relearning', 'Washout'),
+##   Endpoint_Error := -1 * Endpoint_Error]
 
 ## NOTE: Also flip the rotation for model fitting in python
 d[rot_dir == 'cw' &
