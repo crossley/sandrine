@@ -35,6 +35,39 @@ d <- d[order(sub)]
 ## NOTE: fix target goofiness
 d[Target %in% 13:24, Target := as.integer(Target - 12)]
 
+## NOTE: add target_deg indicator column
+d[, target_deg := -1]
+d[Target == 1, target_deg := 0]
+d[Target == 2, target_deg := 30]
+d[Target == 3, target_deg := 60]
+d[Target == 4, target_deg := 90]
+d[Target == 5, target_deg := 120]
+d[Target == 6, target_deg := 150]
+d[Target == 7, target_deg := 180]
+d[Target == 8, target_deg := -150]
+d[Target == 9, target_deg := -120]
+d[Target == 10, target_deg := -90]
+d[Target == 11, target_deg := -60]
+d[Target == 12, target_deg := -30]
+
+## NOTE: Try to fix hand angle madness
+d[, HA := -atan2(Endpoint_Y - 0.2, Endpoint_X) * 180 / pi + 90]
+d[Endpoint_Y - 0.2 < 0 & Endpoint_X < 0 & target_deg != 180, HA := HA - 360]
+d[, HA := HA - target_deg]
+
+## NOTE: inspect target locations
+ggplot(d, aes(Endpoint_X, Endpoint_Y-0.2, color=as.factor(target_deg))) +
+    geom_point() +
+    facet_wrap(~phase)
+
+ggplot(d, aes(target_deg, HA, color=as.factor(target_deg))) +
+    geom_point() +
+    facet_wrap(~phase)
+
+
+## NOTE: quick hack switch
+d[, Endpoint_Error := HA]
+
 ## NOTE: add trial indicator column
 d <- d[order(sub, phase_order, Trial_Phase)]
 d[, trial := 1:.N, .(sub)]
@@ -59,15 +92,14 @@ d[, rot_dir := 'cw']
 d[sub %in% subs_ccw, rot_dir := 'ccw']
 
 ## NOTE: flip rot_dir so that everybody can be plotted in the same space
-## d[rot_dir == 'cw' &
-##   phase %in% c('Training', 'Generalisation', 'Relearning', 'Washout'),
-##   Endpoint_Error := -1 * Endpoint_Error]
+d[rot_dir == 'cw' &
+  phase %in% c('Training', 'Generalisation', 'Relearning', 'Washout'),
+  Endpoint_Error := -1 * Endpoint_Error]
 
 ## NOTE: Also flip the rotation for model fitting in python
 d[rot_dir == 'cw' &
   phase %in% c('Training', 'Generalisation', 'Relearning', 'Washout'),
   Appl_Perturb := -1 * Appl_Perturb]
-
 
 ## NOTE: add phase means for baseline correction
 d[, ee_mean := mean(Endpoint_Error, na.rm=T), .(sub, phase, Target)]
@@ -100,6 +132,11 @@ ggplot(dd, aes(trial, V1, colour=as.factor(cnd))) +
     facet_wrap(~rot_dir)
 ggsave('../figures/learning_curves_cwccw.pdf', width=10, height=4)
 
+dd <- d[, .(mean(HA, na.rm=T), sd(HA, na.rm=T)/sqrt(16)), .(cnd, trial, rot_dir)]
+ggplot(dd, aes(trial, V1, colour=as.factor(cnd))) +
+    geom_point(alpha=0.4) +
+    facet_wrap(~rot_dir)
+ggsave('../figures/learning_curves_cwccw_HA.pdf', width=10, height=4)
 
 ## NOTE: plot all trials separate over CW / CCW
 dd <- d[, mean(Endpoint_Error, na.rm=T), .(cnd, trial, rot_dir, aware)]
@@ -115,21 +152,6 @@ ggplot(dd, aes(V1, fill=as.factor(cnd))) +
     geom_histogram(alpha=0.75) +
     facet_wrap(~rot_dir*cnd)
 ggsave('../figures/prebaseline.pdf', width=8, height=6)
-
-## NOTE: add target_deg indicator column
-d[, target_deg := -1]
-d[Target == 1, target_deg := 0]
-d[Target == 2, target_deg := 30]
-d[Target == 3, target_deg := 60]
-d[Target == 4, target_deg := 90]
-d[Target == 5, target_deg := 120]
-d[Target == 6, target_deg := 150]
-d[Target == 7, target_deg := 180]
-d[Target == 8, target_deg := -150]
-d[Target == 9, target_deg := -120]
-d[Target == 10, target_deg := -90]
-d[Target == 11, target_deg := -60]
-d[Target == 12, target_deg := -30]
 
 ## NOTE: Plot generalisation function --- no baseline correction
 dd <- d[phase == "Generalisation",
