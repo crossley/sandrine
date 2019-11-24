@@ -131,7 +131,6 @@ def simulate_state_space_with_g_func(p, rot):
             x[:, i + 1] = beta * x[:, i] - alpha * delta[i] * G
             # except:
             #     print(x.shape, G.shape, delta.shape)
-
     """
     for i in range(len(rot_type)):
         temp = 221 + i
@@ -695,13 +694,85 @@ def inspect_fits_fancy():
     plt.show()
 
 
-# simulate_state_space_with_g_func()
+def simulate_state_space_with_g_func_usedependent(p, rot):
+    alpha = p[0]
+    beta = p[1]
+    g_sigma = p[2]
+    """
+    Define experiment
+    Simple state-space model predictions:
+    N per Block:
+    1:     Prebaseline 120
+    2: Familiarisation 120
+    3:    Baseline_NFB  96
+    4:        Baseline 144
+    5:        Training 400
+    6:  Generalisation  72
+    7:      Relearning 100
+    8:         Washout 100
+    """
+    num_trials = rot.shape[0]
+
+    delta = np.zeros(num_trials)
+
+    theta_values = np.linspace(0.0, 330.0, 12) - 150.0
+    theta_train_ind = np.where(theta_values == 0.0)[0][0]
+    theta_ind = theta_train_ind * np.ones(num_trials, dtype=np.int8)
+
+    def g_func(theta, theta_mu, sigma):
+        if sigma != 0:
+            G = np.exp(-(theta - theta_mu)**2 / (2 * sigma**2))
+        else:
+            G = np.zeros((12, 1))
+        return (G)
+
+    # Just do training
+    n_simulations = 100
+    x = np.zeros((12, num_trials))
+    ud = np.zeros((12, num_trials))
+    for i in range(0, num_trials - 1):
+        if i > 1000 and i <= 1072:
+            delta[i] = 0.0
+        else:
+            delta[i] = x[theta_ind[i], i] - rot[i]
+
+        G = g_func(theta_values, theta_values[theta_ind[i]], g_sigma)
+
+        if np.isnan(rot[i]):
+            x[:, i + 1] = beta * x[:, i]
+        else:
+            x[:, i + 1] = beta * x[:, i] - alpha * delta[i] * G
+
+        ud[:, i] += g_func(theta_values, x[theta_ind[i], i], 30.0)
+        x[:, i + 1] += .15 * ud[:, i]
+
+    # for i in range(12):
+    #     plt.plot(x[i, :])
+    # plt.show()
+
+    # xg = np.mean(x[:, 1000:1072], 1)
+    # plt.plot(xg, '-')
+    # plt.plot(xg, '.')
+    # plt.xticks(ticks=np.arange(0, 12, 1), labels=theta_values)
+    # plt.show()
+
+    return x.T
+
+
+p = [0.1, 0.99, 30]
+rot = np.concatenate((np.zeros(120 + 120 + 96), np.random.normal(0, 2, 144),
+                      np.random.normal(15, 2,
+                                       400), np.random.normal(15, 2, 72),
+                      np.random.normal(15, 2, 100), np.zeros(100)))
+
+simulate_state_space_with_g_func_usedependent(p, rot)
+
 # fit_state_space_with_g_func()
 # fit_state_space_with_g_func_2_state()
 # fit_state_space_with_g_func_grp()
 # fit_state_space_with_g_func_2_state_grp()
 
-fit_state_space_with_g_func_grp_bootstrap()
+# fit_state_space_with_g_func_grp_bootstrap()
 # fit_state_space_with_g_func_2_state_grp_bootstrap()
 
 # inspect_fits_fancy() # TODO: something is goofy
