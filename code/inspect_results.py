@@ -9,6 +9,80 @@ import os as os
 import re as re
 
 
+def simulate_state_space_with_g_func_usedependent(p, rot):
+    alpha = p[0]
+    beta = p[1]
+    g_sigma = p[2]
+    """
+    Define experiment
+    Simple state-space model predictions:
+    N per Block:
+    1:     Prebaseline 120
+    2: Familiarisation 120
+    3:    Baseline_NFB  96
+    4:        Baseline 144
+    5:        Training 400
+    6:  Generalisation  72
+    7:      Relearning 100
+    8:         Washout 100
+    """
+    num_trials = rot.shape[0]
+
+    delta = np.zeros(num_trials)
+
+    theta_values = np.linspace(0.0, 330.0, 12) - 150.0
+    theta_train_ind = np.where(theta_values == 0.0)[0][0]
+    theta_ind = theta_train_ind * np.ones(num_trials, dtype=np.int8)
+
+    def g_func(theta, theta_mu, sigma):
+        if sigma != 0:
+            G = np.exp(-(theta - theta_mu)**2 / (2 * sigma**2))
+        else:
+            G = np.zeros(12)
+        return (G)
+
+    # Just do training
+    n_simulations = 100
+    x = np.zeros((12, num_trials))
+    ud = np.zeros((12, num_trials))
+    for i in range(0, num_trials - 1):
+        if i > 1000 and i <= 1072:
+            delta[i] = 0.0
+        elif i > 1172:
+            delta[i] = 0.0
+        else:
+            delta[i] = x[theta_ind[i], i] - rot[i]
+
+        G = g_func(theta_values, theta_values[theta_ind[i]], g_sigma)
+
+        if np.isnan(rot[i]):
+            x[:, i + 1] = beta * x[:, i]
+        else:
+            x[:, i + 1] = beta * x[:, i] - alpha * delta[i] * G
+
+        ud[:, i] += g_func(theta_values, x[theta_ind[i], i], 30.0)
+        x[:, i + 1] += .15 * ud[:, i]
+
+    # for i in range(12):
+    #     plt.plot(x[i, :])
+    # plt.show()
+
+    xg = np.mean(x[:, 1000:1072], 1)
+    plt.plot(xg, '-')
+    plt.plot(xg, '.')
+    plt.xticks(ticks=np.arange(0, 12, 1), labels=theta_values)
+    plt.show()
+
+    # udg = np.mean(ud[:, 1000:1072], 1)
+    # udg = np.mean(ud[:, 0:500], 1)
+    # plt.plot(udg, '-')
+    # plt.plot(udg, '.')
+    # plt.xticks(ticks=np.arange(0, 12, 1), labels=theta_values)
+    # plt.show()
+
+    return x.T
+
+
 def simulate_state_space_with_g_func_2_state(p, rot):
     alpha_s = p[0]
     beta_s = p[1]
@@ -51,6 +125,8 @@ def simulate_state_space_with_g_func_2_state(p, rot):
     for i in range(0, num_trials - 1):
         if i > 1000 and i <= 1072:
             delta[i] = 0.0
+        elif i > 1172:
+            delta[i] = 0.0
         else:
             delta[i] = xs[theta_ind[i], i] - rot[i]
 
@@ -62,23 +138,7 @@ def simulate_state_space_with_g_func_2_state(p, rot):
         else:
             xs[:, i + 1] = beta_s * xs[:, i] - alpha_s * delta[i] * Gs
             xf[:, i + 1] = beta_f * xf[:, i] - alpha_f * delta[i] * Gf
-            """
-    for i in range(len(rot_type)):
-            temp = 221 + i
-            plt.subplot(temp)
-            plt.ylim(-35, 35)
-            plt.plot(rot_type[i])
-        for j in range(12):
-            plt.plot(xs_type[i][:, j])
-            """
 
-    # plt.subplot(121)
-    # plt.plot(G)
-
-    # plt.subplot(122)
-    # plt.plot(rot, '-k')
-    # for i in range(12):
-    #    plt.plot(xs[i, :])
     return (xs.T + xf.T)
 
 
@@ -119,6 +179,8 @@ def simulate_state_space_with_g_func(p, rot):
     x = np.zeros((12, num_trials))
     for i in range(0, num_trials - 1):
         if i > 1000 and i <= 1072:
+            delta[i] = 0.0
+        elif i > 1172:
             delta[i] = 0.0
         else:
             delta[i] = x[theta_ind[i], i] - rot[i]
@@ -190,31 +252,135 @@ def fit_obj_func_sse_2_state(params, *args):
     return (sse)
 
 
+def fit_state_space_with_g_func_2_state_grp_bootstrap():
+    f_name = '../fit_input/master_data.csv'
+
+    d = pd.read_csv(f_name)
+
+    n_boot_samp = 2000  # NOTE: This should be pretty big (e.g., 1000)
+    p_rec = -1 * np.ones((n_boot_samp, 6))
+
+    rot = d[d['sub'] == 1]['Appl_Perturb'].values
+
+    for b in range(n_boot_samp):
+        for i in d['cnd'].unique():
+            for j in d['rot_dir'].unique():
+                print(b, i, j)
+                dd = d[d['cnd'] == i]
+                dd = dd[dd['rot_dir'] == j]
+                subs = dd['sub'].unique()
+                boot_subs = np.random.choice(subs,
+                                             size=subs.shape[0],
+                                             replace=True)
+                x_boot_rec = []
+                for k in boot_subs:
+                    x_boot_rec.append(d[d['sub'] == k])
+                    x_boot = pd.concat(x_boot_rec)
+
+                x_obs = x_boot.groupby(['cnd', 'Target', 'trial']).mean()
+                x_obs.reset_index(inplace=True)
+
+                x_obs = x_obs[[
+                    "Endpoint_Error", "Target", "target_deg", "trial"
+                ]]
+                x_obs = x_obs.pivot(index="trial",
+                                    columns="target_deg",
+                                    values="Endpoint_Error")
+
+                x_obs = x_obs.values
+
+                args = (x_obs, rot)
+                bounds = ((0, 1), (0, 1), (0, 60), (0, 1), (0, 1), (0, 60))
+                results = differential_evolution(func=fit_obj_func_sse_2_state,
+                                                 bounds=bounds,
+                                                 args=args,
+                                                 maxiter=300,
+                                                 disp=False,
+                                                 polish=True,
+                                                 updating="deferred",
+                                                 workers=-1)
+                p = results["x"]
+                p_rec[b, :] = p
+
+                f_name_p = "../fits/fit_grp_2state_bootstrap_" + str(i) + '_' + j
+                with open(f_name_p, "w") as f:
+                    np.savetxt(f, p_rec, "%0.4f", ",")
+
+    return p_rec
+
+
 def fit_state_space_with_g_func_grp_bootstrap():
     f_name = '../fit_input/master_data.csv'
 
     d = pd.read_csv(f_name)
 
-    n_boot_samp = 10  # NOTE: This should be pretty big (e.g., 1000)
+    n_boot_samp = 2000  # NOTE: This should be pretty big (e.g., 1000)
     p_rec = -1 * np.ones((n_boot_samp, 3))
 
     rot = d[d['sub'] == 1]['Appl_Perturb'].values
 
     for b in range(n_boot_samp):
         for i in d['cnd'].unique():
-            print(b, i)
-            subs = d[d['cnd'] == i]['sub'].unique()
-            boot_subs = np.random.choice(subs,
-                                         size=subs.shape[0],
-                                         replace=True)
-            x_boot_rec = []
-            for j in boot_subs:
-                x_boot_rec.append(d[d['sub'] == j])
-                x_boot = pd.concat(x_boot_rec)
+            for j in d['rot_dir'].unique():
+                print(b, i, j)
+                dd = d[d['cnd'] == i]
+                dd = dd[dd['rot_dir'] == j]
+                subs = dd['sub'].unique()
+                boot_subs = np.random.choice(subs,
+                                             size=subs.shape[0],
+                                             replace=True)
+                x_boot_rec = []
+                for k in boot_subs:
+                    x_boot_rec.append(d[d['sub'] == k])
+                    x_boot = pd.concat(x_boot_rec)
 
-            x_obs = x_boot.groupby(['cnd', 'Target', 'trial']).mean()
-            x_obs.reset_index(inplace=True)
+                x_obs = x_boot.groupby(['cnd', 'Target', 'trial']).mean()
+                x_obs.reset_index(inplace=True)
 
+                x_obs = x_obs[[
+                    "Endpoint_Error", "Target", "target_deg", "trial"
+                ]]
+                x_obs = x_obs.pivot(index="trial",
+                                    columns="target_deg",
+                                    values="Endpoint_Error")
+
+                x_obs = x_obs.values
+
+                args = (x_obs, rot)
+                bounds = ((0, 1), (0, 1), (0, 60))
+                results = differential_evolution(func=fit_obj_func_sse,
+                                                 bounds=bounds,
+                                                 args=args,
+                                                 maxiter=300,
+                                                 disp=False,
+                                                 polish=True,
+                                                 updating="deferred",
+                                                 workers=-1)
+                p = results["x"]
+                p_rec[b, :] = p
+
+                f_name_p = "../fits/fit_grp_bootstrap_" + str(i) + '_' + j
+                with open(f_name_p, "w") as f:
+                    np.savetxt(f, p_rec, "%0.4f", ",")
+
+    return p_rec
+
+
+def fit_state_space_with_g_func_grp():
+    f_name = '../fit_input/master_data.csv'
+
+    d = pd.read_csv(f_name)
+    p_rec = np.empty((0, 3))
+
+    rot = d[d['sub'] == 1]['Appl_Perturb'].values
+
+    x_obs_all = d.groupby(['cnd', 'Target', 'trial', 'rot_dir']).mean()
+    x_obs_all.reset_index(inplace=True)
+
+    for i in range(x_obs_all['cnd'].unique().shape[0]):
+        for j in ('cw', 'ccw'):
+            x_obs = x_obs_all[x_obs_all['cnd'] == i]
+            x_obs = x_obs[x_obs['rot_dir'] == j]
             x_obs = x_obs[["Endpoint_Error", "Target", "target_deg", "trial"]]
             x_obs = x_obs.pivot(index="trial",
                                 columns="target_deg",
@@ -233,55 +399,15 @@ def fit_state_space_with_g_func_grp_bootstrap():
                                              updating="deferred",
                                              workers=-1)
             p = results["x"]
-            p_rec[b, :] = p
+            x_pred = simulate_state_space_with_g_func(p, rot)
 
-            f_name_p = "../fits/fit_grp_bootstrap_" + str(i)
+            c = cm.rainbow(np.linspace(0, 1, 12))
+
+            p_rec = np.append(p_rec, [p], axis=0)
+
+            f_name_p = "../fits/fit_grp_" + str(i) + '_' + j
             with open(f_name_p, "w") as f:
-                np.savetxt(f, p_rec, "%0.4f", ",")
-
-    return p_rec
-
-
-def fit_state_space_with_g_func_grp():
-    f_name = '../fit_input/master_data.csv'
-
-    d = pd.read_csv(f_name)
-    p_rec = np.empty((0, 3))
-
-    rot = d[d['sub'] == 1]['Appl_Perturb'].values
-
-    x_obs_all = d.groupby(['cnd', 'Target', 'trial']).mean()
-    x_obs_all.reset_index(inplace=True)
-
-    for i in range(x_obs_all['cnd'].unique().shape[0]):
-        x_obs = x_obs_all[x_obs_all['cnd'] == i]
-        x_obs = x_obs[["Endpoint_Error", "Target", "target_deg", "trial"]]
-        x_obs = x_obs.pivot(index="trial",
-                            columns="target_deg",
-                            values="Endpoint_Error")
-
-        x_obs = x_obs.values
-
-        args = (x_obs, rot)
-        bounds = ((0, 1), (0, 1), (0, 60))
-        results = differential_evolution(func=fit_obj_func_sse,
-                                         bounds=bounds,
-                                         args=args,
-                                         maxiter=300,
-                                         disp=False,
-                                         polish=True,
-                                         updating="deferred",
-                                         workers=-1)
-        p = results["x"]
-        x_pred = simulate_state_space_with_g_func(p, rot)
-
-        c = cm.rainbow(np.linspace(0, 1, 12))
-
-        p_rec = np.append(p_rec, [p], axis=0)
-
-        f_name_p = "../fits/fit_grp_" + str(i)
-        with open(f_name_p, "w") as f:
-            np.savetxt(f, p, "%0.4f", ",")
+                np.savetxt(f, p, "%0.4f", ",")
 
     return p_rec
 
@@ -294,38 +420,40 @@ def fit_state_space_with_g_func_2_state_grp():
 
     rot = d[d['sub'] == 1]['Appl_Perturb'].values
 
-    x_obs_all = d.groupby(['cnd', 'Target', 'trial']).mean()
+    x_obs_all = d.groupby(['cnd', 'Target', 'trial', 'rot_dir']).mean()
     x_obs_all.reset_index(inplace=True)
 
     for i in range(x_obs_all['cnd'].unique().shape[0]):
-        x_obs = x_obs_all[x_obs_all['cnd'] == i]
-        x_obs = x_obs[["Endpoint_Error", "Target", "target_deg", "trial"]]
-        x_obs = x_obs.pivot(index="trial",
-                            columns="target_deg",
-                            values="Endpoint_Error")
+        for j in ('cw', 'ccw'):
+            x_obs = x_obs_all[x_obs_all['cnd'] == i]
+            x_obs = x_obs[x_obs['rot_dir'] == j]
+            x_obs = x_obs[["Endpoint_Error", "Target", "target_deg", "trial"]]
+            x_obs = x_obs.pivot(index="trial",
+                                columns="target_deg",
+                                values="Endpoint_Error")
 
-        x_obs = x_obs.values
+            x_obs = x_obs.values
 
-        args = (x_obs, rot)
-        bounds = ((0, 1), (0, 1), (0, 60), (0, 1), (0, 1), (0, 60))
-        results = differential_evolution(func=fit_obj_func_sse_2_state,
-                                         bounds=bounds,
-                                         args=args,
-                                         maxiter=300,
-                                         disp=False,
-                                         polish=True,
-                                         updating="deferred",
-                                         workers=-1)
-        p = results["x"]
-        x_pred = simulate_state_space_with_g_func(p, rot)
+            args = (x_obs, rot)
+            bounds = ((0, 1), (0, 1), (0, 60), (0, 1), (0, 1), (0, 60))
+            results = differential_evolution(func=fit_obj_func_sse_2_state,
+                                             bounds=bounds,
+                                             args=args,
+                                             maxiter=300,
+                                             disp=False,
+                                             polish=True,
+                                             updating="deferred",
+                                             workers=-1)
+            p = results["x"]
+            x_pred = simulate_state_space_with_g_func(p, rot)
 
-        c = cm.rainbow(np.linspace(0, 1, 12))
+            c = cm.rainbow(np.linspace(0, 1, 12))
 
-        p_rec = np.append(p_rec, [p], axis=0)
+            p_rec = np.append(p_rec, [p], axis=0)
 
-        f_name_p = "../fits/fit_2state_grp_" + str(i)
-        with open(f_name_p, "w") as f:
-            np.savetxt(f, p, "%0.4f", ",")
+            f_name_p = "../fits/fit_2state_grp_" + str(i) + '_' + j
+            with open(f_name_p, "w") as f:
+                np.savetxt(f, p, "%0.4f", ",")
 
     return p_rec
 
@@ -474,47 +602,128 @@ def fit_state_space_with_g_func():
     return p_rec
 
 
+def inspect_fits_boot():
+    f_name = '../fit_input/master_data.csv'
+
+    d = pd.read_csv(f_name)
+
+    rot = d[d['sub'] == 1]['Appl_Perturb'].values
+    x_obs_all = d.groupby(['cnd', 'trial', 'Target', 'rot_dir']).mean()
+    x_obs_all.reset_index(inplace=True)
+
+    for i in range(x_obs_all['cnd'].unique().shape[0]):
+        for j in ('cw', 'ccw'):
+
+            x_obs = x_obs_all[x_obs_all['cnd'] == i]
+            x_obs = x_obs[x_obs['rot_dir'] == j]
+            x_obs = x_obs[["Endpoint_Error", "target_deg", "trial"]]
+            x_obs = x_obs.pivot(index="trial",
+                                columns="target_deg",
+                                values="Endpoint_Error")
+
+            x_obs = x_obs.values
+
+            fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(14, 14))
+
+            # NOTE: 1 state
+            params = np.loadtxt("../fits/fit_grp_" + str(i) + '_' + j)
+            x_pred = simulate_state_space_with_g_func(params, rot)
+
+            for ii in range(12):
+                ax[0, 0].scatter(np.arange(0, x_obs.shape[0]),
+                                 x_obs[:, ii],
+                                 alpha=0.05)
+                ax[0, 0].plot(x_pred)
+
+            xg_obs = np.nanmean(x_obs[1000:1072, :], 0)
+            xg_pred = np.mean(x_pred[1000:1072, :], 0)
+            ax[1, 0].plot(xg_obs, '-')
+            ax[1, 0].plot(xg_pred, '-')
+            ax[1, 0].set_xticks(ticks=np.arange(0, 12, 1))
+            ax[1, 0].set_xticklabels(labels=theta_values)
+
+            # NOTE: 2 state
+            params = np.loadtxt("../fits/fit_2state_grp_" + str(i) + '_' + j)
+            x_pred = simulate_state_space_with_g_func_2_state(params, rot)
+
+            for ii in range(12):
+                ax[0, 1].scatter(np.arange(0, x_obs.shape[0]),
+                                 x_obs[:, ii],
+                                 alpha=0.05)
+                ax[0, 1].plot(x_pred)
+
+            xg_obs = np.nanmean(x_obs[1000:1072, :], 0)
+            xg_pred = np.mean(x_pred[1000:1072, :], 0)
+            ax[1, 1].plot(xg_obs, '-')
+            ax[1, 1].plot(xg_pred, '-')
+            ax[1, 1].set_xticks(ticks=np.arange(0, 12, 1))
+            ax[1, 1].set_xticklabels(labels=theta_values)
+
+            plt.savefig('../figures/fit_combined_grp_' + str(i) + '_' +
+                        str(j) + ".png")
+            plt.close()
+
+
 def inspect_fits_grp():
     f_name = '../fit_input/master_data.csv'
 
     d = pd.read_csv(f_name)
+
     rot = d[d['sub'] == 1]['Appl_Perturb'].values
-    x_obs_all = d.groupby(['cnd', 'trial', 'Target']).mean()
+    x_obs_all = d.groupby(['cnd', 'trial', 'Target', 'rot_dir']).mean()
     x_obs_all.reset_index(inplace=True)
 
     for i in range(x_obs_all['cnd'].unique().shape[0]):
-        x_obs = x_obs_all[x_obs_all['cnd'] == i]
-        x_obs = x_obs[["Endpoint_Error", "Target", "target_deg", "trial"]]
-        x_obs = x_obs.pivot(index="trial",
-                            columns="target_deg",
-                            values="Endpoint_Error")
+        for j in ('cw', 'ccw'):
 
-        x_obs = x_obs.values
+            x_obs = x_obs_all[x_obs_all['cnd'] == i]
+            x_obs = x_obs[x_obs['rot_dir'] == j]
+            x_obs = x_obs[["Endpoint_Error", "target_deg", "trial"]]
+            x_obs = x_obs.pivot(index="trial",
+                                columns="target_deg",
+                                values="Endpoint_Error")
 
-        fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(14, 6))
+            x_obs = x_obs.values
 
-        # NOTE: 1 state
-        params = np.loadtxt("../fits/fit_grp_" + str(i))
-        x_pred = simulate_state_space_with_g_func(params, rot)
+            fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(14, 14))
 
-        for ii in range(12):
-            ax[0].scatter(np.arange(0, x_obs.shape[0]),
-                          x_obs[:, ii],
-                          alpha=0.2)
-            ax[0].plot(x_pred)
+            # NOTE: 1 state
+            params = np.loadtxt("../fits/fit_grp_" + str(i) + '_' + j)
+            x_pred = simulate_state_space_with_g_func(params, rot)
 
-        # NOTE: 2 state
-        params = np.loadtxt("../fits/fit_2state_grp_" + str(i))
-        x_pred = simulate_state_space_with_g_func_2_state(params, rot)
+            for ii in range(12):
+                ax[0, 0].scatter(np.arange(0, x_obs.shape[0]),
+                                 x_obs[:, ii],
+                                 alpha=0.05)
+                ax[0, 0].plot(x_pred)
 
-        for ii in range(12):
-            ax[1].scatter(np.arange(0, x_obs.shape[0]),
-                          x_obs[:, ii],
-                          alpha=0.2)
-            ax[1].plot(x_pred)
+            xg_obs = np.nanmean(x_obs[1000:1072, :], 0)
+            xg_pred = np.mean(x_pred[1000:1072, :], 0)
+            ax[1, 0].plot(xg_obs, '-')
+            ax[1, 0].plot(xg_pred, '-')
+            ax[1, 0].set_xticks(ticks=np.arange(0, 12, 1))
+            ax[1, 0].set_xticklabels(labels=theta_values)
 
-        plt.savefig('../figures/fit_combined_grp_' + str(i) + ".png")
-        plt.close()
+            # NOTE: 2 state
+            params = np.loadtxt("../fits/fit_2state_grp_" + str(i) + '_' + j)
+            x_pred = simulate_state_space_with_g_func_2_state(params, rot)
+
+            for ii in range(12):
+                ax[0, 1].scatter(np.arange(0, x_obs.shape[0]),
+                                 x_obs[:, ii],
+                                 alpha=0.05)
+                ax[0, 1].plot(x_pred)
+
+            xg_obs = np.nanmean(x_obs[1000:1072, :], 0)
+            xg_pred = np.mean(x_pred[1000:1072, :], 0)
+            ax[1, 1].plot(xg_obs, '-')
+            ax[1, 1].plot(xg_pred, '-')
+            ax[1, 1].set_xticks(ticks=np.arange(0, 12, 1))
+            ax[1, 1].set_xticklabels(labels=theta_values)
+
+            plt.savefig('../figures/fit_combined_grp_' + str(i) + '_' +
+                        str(j) + ".png")
+            plt.close()
 
 
 def inspect_fits():
@@ -696,78 +905,6 @@ def inspect_fits_fancy():
     plt.show()
 
 
-def simulate_state_space_with_g_func_usedependent(p, rot):
-    alpha = p[0]
-    beta = p[1]
-    g_sigma = p[2]
-    """
-    Define experiment
-    Simple state-space model predictions:
-    N per Block:
-    1:     Prebaseline 120
-    2: Familiarisation 120
-    3:    Baseline_NFB  96
-    4:        Baseline 144
-    5:        Training 400
-    6:  Generalisation  72
-    7:      Relearning 100
-    8:         Washout 100
-    """
-    num_trials = rot.shape[0]
-
-    delta = np.zeros(num_trials)
-
-    theta_values = np.linspace(0.0, 330.0, 12) - 150.0
-    theta_train_ind = np.where(theta_values == 0.0)[0][0]
-    theta_ind = theta_train_ind * np.ones(num_trials, dtype=np.int8)
-
-    def g_func(theta, theta_mu, sigma):
-        if sigma != 0:
-            G = np.exp(-(theta - theta_mu)**2 / (2 * sigma**2))
-        else:
-            G = np.zeros(12)
-        return (G)
-
-    # Just do training
-    n_simulations = 100
-    x = np.zeros((12, num_trials))
-    ud = np.zeros((12, num_trials))
-    for i in range(0, num_trials - 1):
-        if i > 1000 and i <= 1072:
-            delta[i] = 0.0
-        else:
-            delta[i] = x[theta_ind[i], i] - rot[i]
-
-        G = g_func(theta_values, theta_values[theta_ind[i]], g_sigma)
-
-        if np.isnan(rot[i]):
-            x[:, i + 1] = beta * x[:, i]
-        else:
-            x[:, i + 1] = beta * x[:, i] - alpha * delta[i] * G
-
-        ud[:, i] += g_func(theta_values, x[theta_ind[i], i], 30.0)
-        x[:, i + 1] += .15 * ud[:, i]
-
-    # for i in range(12):
-    #     plt.plot(x[i, :])
-    # plt.show()
-
-    xg = np.mean(x[:, 1000:1072], 1)
-    plt.plot(xg, '-')
-    plt.plot(xg, '.')
-    plt.xticks(ticks=np.arange(0, 12, 1), labels=theta_values)
-    plt.show()
-
-    # udg = np.mean(ud[:, 1000:1072], 1)
-    # udg = np.mean(ud[:, 0:500], 1)
-    # plt.plot(udg, '-')
-    # plt.plot(udg, '.')
-    # plt.xticks(ticks=np.arange(0, 12, 1), labels=theta_values)
-    # plt.show()
-
-    return x.T
-
-
 # p = [0.1, 0.99, 30]
 # rot = np.concatenate((np.zeros(120 + 120 + 96), np.random.normal(0, 2, 144),
 #                       np.random.normal(15, 2,
@@ -781,8 +918,13 @@ def simulate_state_space_with_g_func_usedependent(p, rot):
 # fit_state_space_with_g_func_grp()
 # fit_state_space_with_g_func_2_state_grp()
 
+# start_time = time.time()
+# fit_state_space_with_g_func_grp_bootstrap()
+# end_time = time.time()
+# print("Execution Time = " + str(end_time - start_time))
+
 start_time = time.time()
-fit_state_space_with_g_func_grp_bootstrap()
+fit_state_space_with_g_func_2_state_grp_bootstrap()
 end_time = time.time()
 print("Execution Time = " + str(end_time - start_time))
 
@@ -791,4 +933,4 @@ print("Execution Time = " + str(end_time - start_time))
 # inspect_fits_fancy() # TODO: something is goofy
 # inspect_fits()
 # inspect_fits_grp()
-inspect_fits_boot()
+# inspect_fits_boot()
