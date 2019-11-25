@@ -125,6 +125,14 @@ ggplot(dd, aes(trial, V1, colour=as.factor(cnd))) +
 ggsave('../figures/learning_curves_percnd.pdf', width=10, height=4)
 
 
+# NOTE: Reaction time
+dd <- d[phase=='Washout', .(mean(RT, na.rm=T), sd(RT, na.rm=T)/sqrt(16)), .(cnd, trial, rot_dir)]
+ggplot(dd, aes(trial, V1, colour=as.factor(cnd))) +
+    geom_point(alpha=0.4) +
+    facet_wrap(~rot_dir)
+ggsave('../figures/learning_curves_cwccw_RT.pdf', width=10, height=4)
+
+
 ## NOTE: plot all trials expanded over CW / CCW
 dd <- d[, .(mean(Endpoint_Error, na.rm=T), sd(Endpoint_Error, na.rm=T)/sqrt(16)), .(cnd, trial, rot_dir)]
 ggplot(dd, aes(trial, V1, colour=as.factor(cnd))) +
@@ -167,9 +175,9 @@ ggplot(dd, aes(x = target_deg, y = V1, colour = as.factor(cnd))) +
 ggsave('../figures/generalisation_ee.pdf', width=10, height=4)
 
 
-## NOTE: Plot generalisation function --- no baseline correction
+## NOTE: Plot generalisation function --- baseline correction
 dd <- d[phase == "Generalisation",
-        .(mean(bcee, na.rm = T), sd(bcee, na.rm = T)/sqrt(.N)),
+        .(mean(bcee, na.rm = T), sd(bcee, na.rm = T)/sqrt(16)),
         .(cnd, target_deg, rot_dir)]
 
 ggplot(dd, aes(x = target_deg, y = V1, colour = as.factor(cnd))) +
@@ -179,6 +187,24 @@ ggplot(dd, aes(x = target_deg, y = V1, colour = as.factor(cnd))) +
     xlim(-150, 150) +
     facet_wrap(~rot_dir)
 ggsave('../figures/generalisation_bcee.pdf', width=10, height=4)
+
+
+## NOTE: Plot generalisation function --- baseline correction --- % adaptation
+d[, adapt_level := mean(bcee[which(phase == 'Training')], na.rm=T), .(cnd, rot_dir)]
+
+dd <- d[phase == "Generalisation",
+        .(mean(bcee / adapt_level, na.rm = T), sd(bcee / adapt_level, na.rm = T)/sqrt(16)),
+        .(cnd, target_deg, rot_dir)]
+
+ggplot(dd, aes(x = target_deg, y = V1, colour = as.factor(cnd))) +
+    geom_line() +
+    geom_errorbar(aes(ymin=V1-V2, ymax=V1+V2), width=10) +
+    scale_x_continuous(breaks=c(0,30,60,90,120,150,-150,-120,-90,-60,-30)) +
+    xlim(-150, 150) +
+    ylim(-0.2, 1.0) +
+    facet_wrap(~rot_dir)
+ggsave('../figures/generalisation_bcee_percent_adapt.pdf', width=10, height=4)
+
 
 
 ## NOTE: Does "aware" matter?

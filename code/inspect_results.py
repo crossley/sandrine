@@ -723,7 +723,7 @@ def simulate_state_space_with_g_func_usedependent(p, rot):
         if sigma != 0:
             G = np.exp(-(theta - theta_mu)**2 / (2 * sigma**2))
         else:
-            G = np.zeros((12, 1))
+            G = np.zeros(12)
         return (G)
 
     # Just do training
@@ -750,9 +750,16 @@ def simulate_state_space_with_g_func_usedependent(p, rot):
     #     plt.plot(x[i, :])
     # plt.show()
 
-    # xg = np.mean(x[:, 1000:1072], 1)
-    # plt.plot(xg, '-')
-    # plt.plot(xg, '.')
+    xg = np.mean(x[:, 1000:1072], 1)
+    plt.plot(xg, '-')
+    plt.plot(xg, '.')
+    plt.xticks(ticks=np.arange(0, 12, 1), labels=theta_values)
+    plt.show()
+
+    # udg = np.mean(ud[:, 1000:1072], 1)
+    # udg = np.mean(ud[:, 0:500], 1)
+    # plt.plot(udg, '-')
+    # plt.plot(udg, '.')
     # plt.xticks(ticks=np.arange(0, 12, 1), labels=theta_values)
     # plt.show()
 
