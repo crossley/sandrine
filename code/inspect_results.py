@@ -302,7 +302,8 @@ def fit_state_space_with_g_func_2_state_grp_bootstrap():
                 p = results["x"]
                 p_rec[b, :] = p
 
-                f_name_p = "../fits/fit_grp_2state_bootstrap_" + str(i) + '_' + j
+                f_name_p = "../fits/fit_grp_2state_bootstrap_" + str(
+                    i) + '_' + j
                 with open(f_name_p, "w") as f:
                     np.savetxt(f, p_rec, "%0.4f", ",")
 
@@ -603,65 +604,23 @@ def fit_state_space_with_g_func():
 
 
 def inspect_fits_boot():
-    f_name = '../fit_input/master_data.csv'
+    fit_0 = pd.read_csv('../fits/fit_grp_2state_bootstrap_0_ccw', header=None)
+    fit_0.columns = [
+        'alpha_s', 'beta_s', 'sigma_s', 'alpha_f', 'beta_f', 'sigma_f'
+    ]
 
-    d = pd.read_csv(f_name)
+    fit_1 = pd.read_csv('../fits/fit_grp_2state_bootstrap_1_ccw', header=None)
+    fit_1.columns = [
+        'alpha_s', 'beta_s', 'sigma_s', 'alpha_f', 'beta_f', 'sigma_f'
+    ]
 
-    rot = d[d['sub'] == 1]['Appl_Perturb'].values
-    x_obs_all = d.groupby(['cnd', 'trial', 'Target', 'rot_dir']).mean()
-    x_obs_all.reset_index(inplace=True)
+    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(8, 8))
+    ax[0,0].hist([fit_0.alpha_s, fit_1.alpha_s], stacked=False)
+    plt.show()
 
-    for i in range(x_obs_all['cnd'].unique().shape[0]):
-        for j in ('cw', 'ccw'):
-
-            x_obs = x_obs_all[x_obs_all['cnd'] == i]
-            x_obs = x_obs[x_obs['rot_dir'] == j]
-            x_obs = x_obs[["Endpoint_Error", "target_deg", "trial"]]
-            x_obs = x_obs.pivot(index="trial",
-                                columns="target_deg",
-                                values="Endpoint_Error")
-
-            x_obs = x_obs.values
-
-            fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(14, 14))
-
-            # NOTE: 1 state
-            params = np.loadtxt("../fits/fit_grp_" + str(i) + '_' + j)
-            x_pred = simulate_state_space_with_g_func(params, rot)
-
-            for ii in range(12):
-                ax[0, 0].scatter(np.arange(0, x_obs.shape[0]),
-                                 x_obs[:, ii],
-                                 alpha=0.05)
-                ax[0, 0].plot(x_pred)
-
-            xg_obs = np.nanmean(x_obs[1000:1072, :], 0)
-            xg_pred = np.mean(x_pred[1000:1072, :], 0)
-            ax[1, 0].plot(xg_obs, '-')
-            ax[1, 0].plot(xg_pred, '-')
-            ax[1, 0].set_xticks(ticks=np.arange(0, 12, 1))
-            ax[1, 0].set_xticklabels(labels=theta_values)
-
-            # NOTE: 2 state
-            params = np.loadtxt("../fits/fit_2state_grp_" + str(i) + '_' + j)
-            x_pred = simulate_state_space_with_g_func_2_state(params, rot)
-
-            for ii in range(12):
-                ax[0, 1].scatter(np.arange(0, x_obs.shape[0]),
-                                 x_obs[:, ii],
-                                 alpha=0.05)
-                ax[0, 1].plot(x_pred)
-
-            xg_obs = np.nanmean(x_obs[1000:1072, :], 0)
-            xg_pred = np.mean(x_pred[1000:1072, :], 0)
-            ax[1, 1].plot(xg_obs, '-')
-            ax[1, 1].plot(xg_pred, '-')
-            ax[1, 1].set_xticks(ticks=np.arange(0, 12, 1))
-            ax[1, 1].set_xticklabels(labels=theta_values)
-
-            plt.savefig('../figures/fit_combined_grp_' + str(i) + '_' +
-                        str(j) + ".png")
-            plt.close()
+    # plt.savefig(
+    #     '../figures/something.png')  # TODO: do something less stupid here
+    # plt.close()
 
 
 def inspect_fits_grp():
@@ -923,14 +882,14 @@ def inspect_fits_fancy():
 # end_time = time.time()
 # print("Execution Time = " + str(end_time - start_time))
 
-start_time = time.time()
-fit_state_space_with_g_func_2_state_grp_bootstrap()
-end_time = time.time()
-print("Execution Time = " + str(end_time - start_time))
+# start_time = time.time()
+# fit_state_space_with_g_func_2_state_grp_bootstrap()
+# end_time = time.time()
+# print("Execution Time = " + str(end_time - start_time))
 
 # fit_state_space_with_g_func_2_state_grp_bootstrap()
 
 # inspect_fits_fancy() # TODO: something is goofy
 # inspect_fits()
 # inspect_fits_grp()
-# inspect_fits_boot()
+inspect_fits_boot()
