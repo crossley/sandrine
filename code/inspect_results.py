@@ -1,3 +1,4 @@
+import time
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -40,7 +41,7 @@ def simulate_state_space_with_g_func_2_state(p, rot):
         if sigma != 0:
             G = np.exp(-(theta - theta_mu)**2 / (2 * sigma**2))
         else:
-            G = np.zeros((12, 1))
+            G = np.zeros(12)
         return (G)
 
     # Just do training
@@ -110,7 +111,7 @@ def simulate_state_space_with_g_func(p, rot):
         if sigma != 0:
             G = np.exp(-(theta - theta_mu)**2 / (2 * sigma**2))
         else:
-            G = np.zeros((12, 1))
+            G = np.zeros(12)
         return (G)
 
     # Just do training
@@ -194,13 +195,14 @@ def fit_state_space_with_g_func_grp_bootstrap():
 
     d = pd.read_csv(f_name)
 
-    n_boot_samp = 2  # NOTE: This should be pretty big (e.g., 1000)
+    n_boot_samp = 10  # NOTE: This should be pretty big (e.g., 1000)
     p_rec = -1 * np.ones((n_boot_samp, 3))
 
     rot = d[d['sub'] == 1]['Appl_Perturb'].values
 
     for b in range(n_boot_samp):
         for i in d['cnd'].unique():
+            print(b, i)
             subs = d[d['cnd'] == i]['sub'].unique()
             boot_subs = np.random.choice(subs,
                                          size=subs.shape[0],
@@ -766,22 +768,27 @@ def simulate_state_space_with_g_func_usedependent(p, rot):
     return x.T
 
 
-p = [0.1, 0.99, 30]
-rot = np.concatenate((np.zeros(120 + 120 + 96), np.random.normal(0, 2, 144),
-                      np.random.normal(15, 2,
-                                       400), np.random.normal(15, 2, 72),
-                      np.random.normal(15, 2, 100), np.zeros(100)))
+# p = [0.1, 0.99, 30]
+# rot = np.concatenate((np.zeros(120 + 120 + 96), np.random.normal(0, 2, 144),
+#                       np.random.normal(15, 2,
+#                                        400), np.random.normal(15, 2, 72),
+#                       np.random.normal(15, 2, 100), np.zeros(100)))
 
-simulate_state_space_with_g_func_usedependent(p, rot)
+# simulate_state_space_with_g_func_usedependent(p, rot)
 
 # fit_state_space_with_g_func()
 # fit_state_space_with_g_func_2_state()
 # fit_state_space_with_g_func_grp()
 # fit_state_space_with_g_func_2_state_grp()
 
-# fit_state_space_with_g_func_grp_bootstrap()
+start_time = time.time()
+fit_state_space_with_g_func_grp_bootstrap()
+end_time = time.time()
+print("Execution Time = " + str(end_time - start_time))
+
 # fit_state_space_with_g_func_2_state_grp_bootstrap()
 
 # inspect_fits_fancy() # TODO: something is goofy
 # inspect_fits()
 # inspect_fits_grp()
+inspect_fits_boot()
