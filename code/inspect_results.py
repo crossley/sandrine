@@ -257,17 +257,16 @@ def fit_state_space_with_g_func_2_state_grp_bootstrap():
 
     d = pd.read_csv(f_name)
 
-    n_boot_samp = 2000  # NOTE: This should be pretty big (e.g., 1000)
-    p_rec = -1 * np.ones((n_boot_samp, 6))
+    n_boot_samp = 1000  # NOTE: This should be pretty big (e.g., 1000)
 
-    rot = d[d['sub'] == 1]['Appl_Perturb'].values
-
-    for b in range(n_boot_samp):
-        for i in d['cnd'].unique():
-            for j in d['rot_dir'].unique():
-                print(b, i, j)
+    for i in d['cnd'].unique():
+        for j in d['rot_dir'].unique():
+            p_rec = -1 * np.ones((n_boot_samp, 6))
+            for b in range(n_boot_samp):
+                print(i, j, b)
                 dd = d[d['cnd'] == i]
                 dd = dd[dd['rot_dir'] == j]
+                rot = dd['Appl_Perturb'].values[0:1272]
                 subs = dd['sub'].unique()
                 boot_subs = np.random.choice(subs,
                                              size=subs.shape[0],
@@ -277,11 +276,11 @@ def fit_state_space_with_g_func_2_state_grp_bootstrap():
                     x_boot_rec.append(d[d['sub'] == k])
                     x_boot = pd.concat(x_boot_rec)
 
-                x_obs = x_boot.groupby(['cnd', 'Target', 'trial']).mean()
+                x_obs = x_boot.groupby(['cnd', 'rot_dir', 'Target', 'trial']).mean()
                 x_obs.reset_index(inplace=True)
 
                 x_obs = x_obs[[
-                    "Endpoint_Error", "Target", "target_deg", "trial"
+                    "Endpoint_Error", "target_deg", "trial"
                 ]]
                 x_obs = x_obs.pivot(index="trial",
                                     columns="target_deg",
@@ -296,7 +295,7 @@ def fit_state_space_with_g_func_2_state_grp_bootstrap():
                                                  args=args,
                                                  maxiter=300,
                                                  disp=False,
-                                                 polish=True,
+                                                 polish=False,
                                                  updating="deferred",
                                                  workers=-1)
                 p = results["x"]
@@ -604,18 +603,44 @@ def fit_state_space_with_g_func():
 
 
 def inspect_fits_boot():
-    fit_0 = pd.read_csv('../fits/fit_grp_2state_bootstrap_0_ccw', header=None)
-    fit_0.columns = [
-        'alpha_s', 'beta_s', 'sigma_s', 'alpha_f', 'beta_f', 'sigma_f'
-    ]
 
-    fit_1 = pd.read_csv('../fits/fit_grp_2state_bootstrap_1_ccw', header=None)
-    fit_1.columns = [
-        'alpha_s', 'beta_s', 'sigma_s', 'alpha_f', 'beta_f', 'sigma_f'
+    fits_names = []
+    for f in os.listdir('../fits'):
+        if '2state_bootstrap' in f:
+            fits_names.append('../fits/' + f)
+
+    fits_names = np.sort(fits_names)
+    fits_list = [pd.read_csv(x, header=None) for x in fits_names]
+    fits_list = [x[0:750] for x in fits_list]
+
+    d = pd.concat(fits_list)
+
+    cnd = np.repeat([0, 1, 2], 1500)
+    rot_dir = np.tile(np.repeat(['cw', 'ccw'], 750), 3)
+
+    d['cnd'] = cnd
+    d['rot_dir'] = rot_dir
+
+    d.columns = [
+        'alpha_s', 'beta_s', 'sigma_s', 'alpha_f', 'beta_f', 'sigma_f', 'cnd',
+        'rot_dir'
     ]
 
     fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(8, 8))
-    ax[0,0].hist([fit_0.alpha_s, fit_1.alpha_s], stacked=False)
+    # ax[0, 0].hist([
+    #     d[d['cnd'] == 0 & (d['rot_dir'] == 'cw')].alpha_s.values,
+    #     d[d['cnd'] == 1 & (d['rot_dir'] == 'cw')].alpha_s.values,
+    #     d[d['cnd'] == 2 & (d['rot_dir'] == 'cw')].alpha_s.values
+    # ],
+    #               stacked=False)
+    ax[0, 0].hist([
+        d[d['cnd'] == 0 & (d['rot_dir'] == 'cw')].alpha_s.values,
+    ],
+                  stacked=False)
+    ax[0, 0].hist([
+        d[d['cnd'] == 1 & (d['rot_dir'] == 'cw')].alpha_s.values,
+    ],
+                  stacked=False)
     plt.show()
 
     # plt.savefig(
@@ -882,10 +907,10 @@ def inspect_fits_fancy():
 # end_time = time.time()
 # print("Execution Time = " + str(end_time - start_time))
 
-# start_time = time.time()
-# fit_state_space_with_g_func_2_state_grp_bootstrap()
-# end_time = time.time()
-# print("Execution Time = " + str(end_time - start_time))
+start_time = time.time()
+fit_state_space_with_g_func_2_state_grp_bootstrap()
+end_time = time.time()
+print("Execution Time = " + str(end_time - start_time))
 
 # fit_state_space_with_g_func_2_state_grp_bootstrap()
 
