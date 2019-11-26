@@ -126,7 +126,7 @@ ggsave('../figures/learning_curves_percnd.pdf', width=10, height=4)
 
 
 # NOTE: Reaction time
-dd <- d[phase=='Washout', .(mean(RT, na.rm=T), sd(RT, na.rm=T)/sqrt(16)), .(cnd, trial, rot_dir)]
+dd <- d[, .(mean(RT, na.rm=T), sd(RT, na.rm=T)/sqrt(16)), .(cnd, trial, rot_dir)]
 ggplot(dd, aes(trial, V1, colour=as.factor(cnd))) +
     geom_point(alpha=0.4) +
     facet_wrap(~rot_dir)

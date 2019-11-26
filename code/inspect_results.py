@@ -8,19 +8,29 @@ import multiprocessing as mp
 import os as os
 import re as re
 
+p = [0.1, 0.99, 30, 0.05, 0.9, 30]
+rot = np.concatenate(
+    (np.zeros(120 * 4), np.random.normal(0, 2,
+                                         120), np.random.normal(15, 2, 400),
+     np.random.normal(15, 2, 72), np.random.normal(15, 2, 100), np.zeros(100)))
+
 
 def simulate_state_space_with_g_func_usedependent(p, rot):
     alpha = p[0]
     beta = p[1]
     g_sigma = p[2]
+    ud_alpha = p[3]
+    ud_beta = p[4]
+    ud_sigma = p[5]
     """
     Define experiment
     Simple state-space model predictions:
     N per Block:
     1:     Prebaseline 120
     2: Familiarisation 120
-    3:    Baseline_NFB  96
-    4:        Baseline 144
+    3:   Baseline_NFB  120
+    4:        Baseline 120
+    4:    Postbaseline 120
     5:        Training 400
     6:  Generalisation  72
     7:      Relearning 100
@@ -45,42 +55,44 @@ def simulate_state_space_with_g_func_usedependent(p, rot):
     n_simulations = 100
     x = np.zeros((12, num_trials))
     ud = np.zeros((12, num_trials))
+    xud = np.zeros((12, num_trials))
     for i in range(0, num_trials - 1):
         if i > 1000 and i <= 1072:
             delta[i] = 0.0
         elif i > 1172:
             delta[i] = 0.0
         else:
-            delta[i] = x[theta_ind[i], i] - rot[i]
+            delta[i] = xud[theta_ind[i], i] - rot[i]
 
         G = g_func(theta_values, theta_values[theta_ind[i]], g_sigma)
 
         if np.isnan(rot[i]):
             x[:, i + 1] = beta * x[:, i]
+            ud[:, i + 1] = ud_beta * ud[:, i]
         else:
             x[:, i + 1] = beta * x[:, i] - alpha * delta[i] * G
+            ud[:, i + 1] = ud_beta * ud[:, i] - ud_alpha * g_func(theta_values, xud[theta_ind[i], i], ud_sigma)
 
-        ud[:, i] += g_func(theta_values, x[theta_ind[i], i], 30.0)
-        x[:, i + 1] += .15 * ud[:, i]
+        xud[:, i + 1] = x[:, i + 1] + ud[:, i + 1]
 
-    # for i in range(12):
-    #     plt.plot(x[i, :])
-    # plt.show()
+    for i in range(12):
+        plt.plot(xud[i, :])
+    plt.show()
 
-    xg = np.mean(x[:, 1000:1072], 1)
-    plt.plot(xg, '-')
-    plt.plot(xg, '.')
+    xud_g = np.mean(xud[:, 1000:1072], 1)
+    plt.plot(xud_g, '-')
+    plt.plot(xud_g, '.')
     plt.xticks(ticks=np.arange(0, 12, 1), labels=theta_values)
     plt.show()
 
-    # udg = np.mean(ud[:, 1000:1072], 1)
-    # udg = np.mean(ud[:, 0:500], 1)
-    # plt.plot(udg, '-')
-    # plt.plot(udg, '.')
-    # plt.xticks(ticks=np.arange(0, 12, 1), labels=theta_values)
-    # plt.show()
+    xud_g = np.mean(ud[:, 1000:1072], 1)
+    plt.plot(xud_g, '-')
+    plt.plot(xud_g, '.')
+    plt.xticks(ticks=np.arange(0, 12, 1), labels=theta_values)
+    plt.show()
 
-    return x.T
+
+    return xud.T
 
 
 def simulate_state_space_with_g_func_2_state(p, rot):
@@ -120,6 +132,7 @@ def simulate_state_space_with_g_func_2_state(p, rot):
 
     # Just do training
     n_simulations = 100
+    x = np.zeros((12, num_trials))
     xs = np.zeros((12, num_trials))
     xf = np.zeros((12, num_trials))
     for i in range(0, num_trials - 1):
@@ -128,7 +141,7 @@ def simulate_state_space_with_g_func_2_state(p, rot):
         elif i > 1172:
             delta[i] = 0.0
         else:
-            delta[i] = xs[theta_ind[i], i] - rot[i]
+            delta[i] = x[theta_ind[i], i] - rot[i]
 
         Gs = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_s)
         Gf = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_f)
@@ -138,6 +151,8 @@ def simulate_state_space_with_g_func_2_state(p, rot):
         else:
             xs[:, i + 1] = beta_s * xs[:, i] - alpha_s * delta[i] * Gs
             xf[:, i + 1] = beta_f * xf[:, i] - alpha_f * delta[i] * Gf
+
+        x[:, i + 1] = xs[:, i + 1] + xf[:, i + 1]
 
     return (xs.T + xf.T)
 
@@ -187,30 +202,11 @@ def simulate_state_space_with_g_func(p, rot):
 
         G = g_func(theta_values, theta_values[theta_ind[i]], g_sigma)
 
-        # try:
         if np.isnan(rot[i]):
             x[:, i + 1] = beta * x[:, i]
         else:
             x[:, i + 1] = beta * x[:, i] - alpha * delta[i] * G
-            # except:
-            #     print(x.shape, G.shape, delta.shape)
-    """
-    for i in range(len(rot_type)):
-        temp = 221 + i
-        plt.subplot(temp)
-        plt.ylim(-35, 35)
-        plt.plot(rot_type[i])
-        for j in range(12):
-            plt.plot(x_type[i][:, j])
-    """
 
-    # plt.subplot(121)
-    # plt.plot(G)
-
-    # plt.subplot(122)
-    # plt.plot(rot, '-k')
-    # for i in range(12):
-    #    plt.plot(x[i, :])
     return x.T
 
 
@@ -276,12 +272,11 @@ def fit_state_space_with_g_func_2_state_grp_bootstrap():
                     x_boot_rec.append(d[d['sub'] == k])
                     x_boot = pd.concat(x_boot_rec)
 
-                x_obs = x_boot.groupby(['cnd', 'rot_dir', 'Target', 'trial']).mean()
+                x_obs = x_boot.groupby(['cnd', 'rot_dir', 'Target',
+                                        'trial']).mean()
                 x_obs.reset_index(inplace=True)
 
-                x_obs = x_obs[[
-                    "Endpoint_Error", "target_deg", "trial"
-                ]]
+                x_obs = x_obs[["Endpoint_Error", "target_deg", "trial"]]
                 x_obs = x_obs.pivot(index="trial",
                                     columns="target_deg",
                                     values="Endpoint_Error")
@@ -889,32 +884,24 @@ def inspect_fits_fancy():
     plt.show()
 
 
-# p = [0.1, 0.99, 30]
-# rot = np.concatenate((np.zeros(120 + 120 + 96), np.random.normal(0, 2, 144),
-#                       np.random.normal(15, 2,
-#                                        400), np.random.normal(15, 2, 72),
-#                       np.random.normal(15, 2, 100), np.zeros(100)))
-
-# simulate_state_space_with_g_func_usedependent(p, rot)
-
 # fit_state_space_with_g_func()
 # fit_state_space_with_g_func_2_state()
 # fit_state_space_with_g_func_grp()
 # fit_state_space_with_g_func_2_state_grp()
 
-# start_time = time.time()
-# fit_state_space_with_g_func_grp_bootstrap()
-# end_time = time.time()
-# print("Execution Time = " + str(end_time - start_time))
-
 start_time = time.time()
-fit_state_space_with_g_func_2_state_grp_bootstrap()
+fit_state_space_with_g_func_grp_bootstrap()
 end_time = time.time()
 print("Execution Time = " + str(end_time - start_time))
+
+# start_time = time.time()
+# fit_state_space_with_g_func_2_state_grp_bootstrap()
+# end_time = time.time()
+# print("Execution Time = " + str(end_time - start_time))
 
 # fit_state_space_with_g_func_2_state_grp_bootstrap()
 
 # inspect_fits_fancy() # TODO: something is goofy
 # inspect_fits()
 # inspect_fits_grp()
-inspect_fits_boot()
+# inspect_fits_boot()
