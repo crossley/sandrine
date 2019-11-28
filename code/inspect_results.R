@@ -234,5 +234,27 @@ ggplot(dd, aes(x = target_deg, y = V1, colour = as.factor(cnd))) +
 ggsave('../figures/generalisation_bcee_collapsed.pdf', width=10, height=8)
 
 
+## NOTE: Collapse across cnd
+dd <- d[phase == "Generalisation",
+        .(mean(Endpoint_Error, na.rm = T), sd(bcee, na.rm = T)/sqrt(.N)),
+        .(rot_dir, target_deg)]
+
+ggplot(dd, aes(x = target_deg, y = V1, colour = as.factor(rot_dir))) +
+    geom_line() +
+    geom_errorbar(aes(ymin=V1-V2, ymax=V1+V2), width=10) +
+    scale_x_continuous(breaks=c(0,30,60,90,120,150,-150,-120,-90,-60,-30)) +
+    xlim(-150, 150)
+ggsave('../figures/generalisation_bcee_collapsed_rot_dir.pdf', width=10, height=8)
+
+
+
 ## NOTE: write master data.table to a csv for reading into Python
-fwrite(d, 'master_data.csv')
+d[rot_dir == 'cw' &
+  phase %in% c('Training', 'Generalisation', 'Relearning', 'Washout'),
+  Appl_Perturb := -1 * Appl_Perturb]
+
+d[rot_dir == 'cw' &
+  phase %in% c('Training', 'Generalisation', 'Relearning', 'Washout'),
+  Endpoint_Error := -1 * Endpoint_Error]
+
+fwrite(d, '../fit_input/master_data.csv')

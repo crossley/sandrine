@@ -8,15 +8,79 @@ import multiprocessing as mp
 import os as os
 
 
+def inspect_boot():
+
+    colors = [
+        '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b',
+        '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
+    ]
+
+    cnd = [0, 1, 2]
+    rot_dir = ['cw', 'ccw']
+    for j in rot_dir:
+        fig, ax = plt.subplots(nrows=2, ncols=3, figsize=(12, 8))
+        for i in cnd:
+            d = np.loadtxt('../fits/fit_grp_2state_bootstrap_' + str(i) + '_' +
+                           j,
+                           delimiter=',')
+
+            alpha_s = d[:, 0]
+            beta_s = d[:, 1]
+            sigma_s = d[:, 2]
+            alpha_f = d[:, 3]
+            beta_f = d[:, 4]
+            sigma_f = d[:, 5]
+
+            b = 25
+            a = 0.8
+
+            ax[0, 0].hist(alpha_s, color=colors[i], bins=b, alpha=a)
+            ax[0, 0].set_title('alpha_s')
+
+            ax[0, 1].hist(beta_s, color=colors[i], bins=b, alpha=a)
+            ax[0, 1].set_title('beta_s')
+
+            ax[0, 2].hist(sigma_s, color=colors[i], bins=b, alpha=a)
+            ax[0, 2].set_title('sigma_s')
+
+            ax[1, 0].hist(alpha_f, color=colors[i], bins=b, alpha=a)
+            ax[1, 0].set_title('alpha_f')
+
+            ax[1, 1].hist(beta_f, color=colors[i], bins=b, alpha=a)
+            ax[1, 1].set_title('beta_f')
+
+            ax[1, 2].hist(sigma_f, color=colors[i], bins=b, alpha=a)
+            ax[1, 2].set_title('sigma_f')
+
+        plt.figlegend(['0', '1', '2'], loc = 'lower center', ncol=5, labelspacing=0., borderaxespad=1)
+        # plt.tight_layout()
+        plt.show()
+
+
 def inspect_fits():
     f_name = '../fit_input/master_data.csv'
 
     d = pd.read_csv(f_name)
 
+    colors = [
+        '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b',
+        '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
+    ]
+    colors_obs = ['black'] * 12
+    colors_obs[5] = colors[0]
+
+    colors_pred = ['black'] * 12
+    colors_pred[5] = colors[1]
+
+    a = 0.05 * np.ones(12)
+    a[5] = 1.0
+
+    fig, ax = plt.subplots(nrows=4, ncols=3, figsize=(12, 8))
+
     for i in d['cnd'].unique():
-        for j in d['rot_dir'].unique():
-            print(i, j)
-            dd = d[(d['cnd'] == i) & (d['rot_dir'] == j)]
+        for j in range(len(d['rot_dir'].unique())):
+            rd = d['rot_dir'].unique()[j]
+            dd = d[(d['cnd'] == i) & (d['rot_dir'] == rd)]
             rot = dd['Appl_Perturb'].values[0:1272]
             x_obs = dd.groupby(['cnd', 'rot_dir', 'Target', 'trial']).mean()
             x_obs.reset_index(inplace=True)
@@ -27,26 +91,30 @@ def inspect_fits():
 
             x_obs = x_obs.values
 
-            p = np.loadtxt('../fits/fit_' + str(i) + '_' + j, delimiter=',')
+            p = np.loadtxt('../fits/fit_' + str(i) + '_' + rd, delimiter=',')
             x_pred = simulate_two_state_ud(p, rot)
 
+            num_trials = rot.shape[0]
+            theta_values = np.linspace(0.0, 330.0, 12) - 150.0
+            theta_train_ind = np.where(theta_values == 0.0)[0][0]
+            theta_ind = theta_train_ind * np.ones(num_trials, dtype=np.int8)
 
-            a = 0.1 * np.ones(12)
-            a[5] = 1.0
-            plt.subplot(121)
+            title = str('cnd = ') + str(i) + ', rot_dir = ' + rd
             for k in range(12):
-                plt.plot(x_obs[:, k], '--', alpha = a[k])
-                plt.plot(x_pred[:, k], '-', alpha = a[k])
-                plt.ylim([-20, 20])
+                ax[j, i].plot(x_obs[:, k], '-', alpha=a[k], c=colors_obs[k])
+                ax[j, i].plot(x_pred[:, k], '-', alpha=a[k], c=colors_pred[k])
+                ax[j, i].set_ylim([-20, 20])
+                ax[j, i].set_title(title)
 
-            plt.subplot(122)
             xg_obs = np.nanmean(x_obs[1000:1072, :], 0)
             xg_pred = np.nanmean(x_pred[1000:1072, :], 0)
-            plt.plot(xg_obs, '--')
-            plt.plot(xg_pred, '-')
-            plt.xticks(ticks=np.arange(0, 12, 1), labels=theta_values)
+            ax[j + 2, i].plot(theta_values, xg_obs, '-', c=colors_obs[5])
+            ax[j + 2, i].plot(theta_values, xg_pred, '-', c=colors_pred[5])
+            ax[j + 2, i].set_title(title)
+            ax[j + 2, i].set_ylim([-15, 15])
 
-            plt.show()
+    plt.tight_layout()
+    plt.show()
 
 
 def fit(dir_output, sim_func, bounds, n_boot):
@@ -135,6 +203,16 @@ def obj_func(params, *args):
 def g_func(theta, theta_mu, sigma):
     if sigma != 0:
         G = np.exp(-(theta - theta_mu)**2 / (2 * sigma**2))
+    else:
+        G = np.zeros(12)
+    return G
+
+
+def ud_func(theta, theta_mu, sigma):
+    if sigma != 0:
+        G = np.exp(-(theta - theta_mu)**2 / (2 * sigma**2))
+        G[np.where(theta > theta_mu)] = -G[np.where(theta > theta_mu)]
+        G[np.where(theta == theta_mu)] = 0
     else:
         G = np.zeros(12)
     return G
@@ -260,8 +338,8 @@ def simulate_two_state_ud(p, rot):
         else:
             xs[:, i + 1] = beta_s * xs[:, i] - alpha_s * delta[i] * G
             xf[:, i + 1] = beta_f * xf[:, i] - alpha_f * delta[i] * G
-            xud[:, i + 1] = beta_ud * xud[:, i] + alpha_ud * g_func(
-                theta_values, xud[theta_ind[i], i], sigma_ud)
+            xud[:, i + 1] = beta_ud * xud[:, i] + alpha_ud * ud_func(
+                theta_values, x[theta_ind[i], i], sigma_ud)
 
         x[:, i + 1] = np.vstack((w_mix * (xs[:, i + 1] + xf[:, i + 1]),
                                  (1 - w_mix) * xud[:, i + 1])).mean(0)
@@ -269,20 +347,10 @@ def simulate_two_state_ud(p, rot):
     return x.T
 
 
-dir_output = '../fits/'
-bounds = ((0, 1), (0, 1), (0, 60), (0, 1), (0, 1), (0, 60), (0, 1), (0, 1),
-          (0, 60), (0, 1))
-n_boot = 1
-p = fit(dir_output, simulate_two_state_ud, bounds, n_boot)
+# dir_output = '../fits/'
+# bounds = ((0, 1), (0, 1), (0, 60), (0, 1), (0, 1), (0, 60), (0, 1), (0, 1),
+#           (0, 60), (0, 1))
+# n_boot = 1
+# p = fit(dir_output, simulate_two_state_ud, bounds, n_boot)
 
-# x_pred = simulate_two_state_ud(p, rot)
-
-# for i in range(12):
-#     plt.plot(x[i, :])
-# plt.show()
-
-# xg = np.mean(x[:, 1000:1072], 1)
-# plt.plot(xg, '-')
-# plt.plot(xg, '.')
-# plt.xticks(ticks=np.arange(0, 12, 1), labels=theta_values)
-# plt.show()
+inspect_fits()
