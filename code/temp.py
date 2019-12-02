@@ -4,8 +4,33 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from scipy.optimize import differential_evolution, minimize
+from scipy.stats import logistic
 import multiprocessing as mp
 import os as os
+
+
+def bootstrap_ci(x, n, alpha):
+    x_boot = np.zeros(n)
+    for i in range(n):
+        x_boot[i] = np.random.choice(x, x.shape, replace=True).mean()
+    ci = np.percentile(x_boot, [alpha / 2, 1.0 - alpha / 2])
+    return (ci)
+
+
+def bootstrap_t(x, y, n):
+    t_obs = stats.ttest_ind(x, y).statistic
+
+    xt = x - x.mean() + np.concatenate((x, y)).mean()
+    yt = y - y.mean() + np.concatenate((x, y)).mean()
+
+    t_boot = np.zeros(n)
+    for i in range(n):
+        xs = np.random.choice(xt, xt.shape, replace=True)
+        ys = np.random.choice(yt, yt.shape, replace=True)
+        t_boot[i] = stats.ttest_ind(xs, ys).statistic
+
+    p_null = (1 + np.sum(np.abs(t_boot) > np.abs(t_obs))) / (n + 1)
+    return (p_null)
 
 
 def inspect_boot():
@@ -15,6 +40,7 @@ def inspect_boot():
         '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
     ]
 
+    dd = []
     cnd = [0, 1, 2]
     rot_dir = ['cw', 'ccw']
     for j in rot_dir:
@@ -23,6 +49,9 @@ def inspect_boot():
             d = np.loadtxt('../fits/fit_grp_2state_bootstrap_' + str(i) + '_' +
                            j,
                            delimiter=',')
+            d['rot_dir'] = rot_dir
+            d['cnd'] = i
+            dd.append(d)
 
             alpha_s = d[:, 0]
             beta_s = d[:, 1]
@@ -52,12 +81,25 @@ def inspect_boot():
             ax[1, 2].hist(sigma_f, color=colors[i], bins=b, alpha=a)
             ax[1, 2].set_title('sigma_f')
 
-        plt.figlegend(['0', '1', '2'], loc = 'lower center', ncol=5, labelspacing=0., borderaxespad=1)
-        # plt.tight_layout()
+        plt.figlegend(['0', '1', '2'],
+                      loc='lower center',
+                      ncol=5,
+                      labelspacing=0.,
+                      borderaxespad=1)
         plt.show()
 
+    dd = pd.concat(dd)
+    for i in dd['cnd'].unique():
+        for j in dd['rot_dir'].unique():
+            for ii in dd['cnd'].unique():
+                for jj in dd['rot_dir'].unique():
+                    x = bootstrap_t(
+                        dd[(dd['cnd'] == i) & (dd['rot_dir'] == j)],
+                        dd[(dd['cnd'] == ii) & (dd['rot_dir'] == jj)], 1000)
+                    print(i, ii, j, jj, x)
 
-def inspect_fits():
+
+def inspect_fits(sim_func, p=None):
     f_name = '../fit_input/master_data.csv'
 
     d = pd.read_csv(f_name)
@@ -92,7 +134,7 @@ def inspect_fits():
             x_obs = x_obs.values
 
             p = np.loadtxt('../fits/fit_' + str(i) + '_' + rd, delimiter=',')
-            x_pred = simulate_two_state_ud(p, rot)
+            x_pred = sim_func(p, rot)
 
             num_trials = rot.shape[0]
             theta_values = np.linspace(0.0, 330.0, 12) - 150.0
@@ -110,6 +152,8 @@ def inspect_fits():
             xg_pred = np.nanmean(x_pred[1000:1072, :], 0)
             ax[j + 2, i].plot(theta_values, xg_obs, '-', c=colors_obs[5])
             ax[j + 2, i].plot(theta_values, xg_pred, '-', c=colors_pred[5])
+            ax[j + 2, i].plot(theta_values, xg_obs, '.', c=colors_obs[5])
+            ax[j + 2, i].plot(theta_values, xg_pred, '.', c=colors_pred[5])
             ax[j + 2, i].set_title(title)
             ax[j + 2, i].set_ylim([-15, 15])
 
@@ -151,6 +195,12 @@ def fit(dir_output, sim_func, bounds, n_boot):
                 x_obs = x_obs.pivot(index="trial",
                                     columns="target_deg",
                                     values="Endpoint_Error")
+                # TODO: is bcee an okay column to use?
+                # TODO: what's up with the missing data in some cnds (plots)?
+                # x_obs = x_obs[["bcee", "target_deg", "trial"]]
+                # x_obs = x_obs.pivot(index="trial",
+                #                     columns="target_deg",
+                #                     values="bcee")
 
                 x_obs = x_obs.values
 
@@ -194,7 +244,11 @@ def obj_func(params, *args):
 
     sse_rec = np.zeros(12)
     for i in range(12):
-        sse_rec[i] = (np.nansum((x_obs[:, i] - x_pred[:, i])**2))
+        # TODO: pick indices for cost function
+        fit_inds = np.concatenate(
+            (np.arange(600, 700, 1), np.arange(1000, 1072,
+                                               1), np.arange(1172, 1272, 1)))
+        sse_rec[i] = (np.nansum((x_obs[fit_inds, i] - x_pred[fit_inds, i])**2))
         sse = np.nansum(sse_rec)
 
     return sse
@@ -210,9 +264,10 @@ def g_func(theta, theta_mu, sigma):
 
 def ud_func(theta, theta_mu, sigma):
     if sigma != 0:
-        G = np.exp(-(theta - theta_mu)**2 / (2 * sigma**2))
-        G[np.where(theta > theta_mu)] = -G[np.where(theta > theta_mu)]
-        G[np.where(theta == theta_mu)] = 0
+        G = -2 * (logistic.cdf(theta, theta_mu, sigma) - 0.5)
+        # G = np.exp(-(theta - theta_mu)**2 / (2 * sigma**2))
+        # G[np.where(theta > theta_mu)] = -G[np.where(theta > theta_mu)]
+        # G[np.where(theta == theta_mu)] = 0
     else:
         G = np.zeros(12)
     return G
@@ -298,17 +353,13 @@ def simulate_two_state(p, rot):
         return x.T
 
 
-def simulate_two_state_ud(p, rot):
+def simulate_one_state_ud(p, rot):
     alpha_s = p[0]
     beta_s = p[1]
     g_sigma_s = p[2]
-    alpha_f = p[3]
-    beta_f = p[4]
-    g_sigma_f = p[5]
-    alpha_ud = p[6]
-    beta_ud = p[7]
-    sigma_ud = p[8]
-    w_mix = p[9]
+    alpha_ud = p[3]
+    beta_ud = p[4]
+    sigma_ud = p[5]
 
     num_trials = rot.shape[0]
 
@@ -329,28 +380,106 @@ def simulate_two_state_ud(p, rot):
         else:
             delta[i] = x[theta_ind[i], i] - rot[i]
 
-        G = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_s)
+        G_s = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_s)
+        G_ud = ud_func(theta_values, x[theta_ind[i], i], sigma_ud)
+
+        if np.isnan(rot[i]):
+            xs[:, i + 1] = beta_s * xs[:, i]
+            xud[:, i + 1] = beta_ud * xud[:, i]
+        else:
+            xs[:, i + 1] = beta_s * xs[:, i] - alpha_s * delta[i] * G_s
+            xud[:, i + 1] = beta_ud * xud[:, i] + alpha_ud * G_ud
+
+        x[:, i + 1] = xs[:, i + 1] + xud[:, i + 1]
+
+    return x.T
+
+
+def simulate_two_state_ud(p, rot):
+    alpha_s = p[0]
+    beta_s = p[1]
+    g_sigma_s = p[2]
+    alpha_f = p[3]
+    beta_f = p[4]
+    g_sigma_f = p[5]
+    alpha_ud = p[6]
+    beta_ud = p[7]
+    sigma_ud = p[8]
+
+    num_trials = rot.shape[0]
+
+    theta_values = np.linspace(0.0, 330.0, 12) - 150.0
+    theta_train_ind = np.where(theta_values == 0.0)[0][0]
+    theta_ind = theta_train_ind * np.ones(num_trials, dtype=np.int8)
+
+    delta = np.zeros(num_trials)
+    x = np.zeros((12, num_trials))
+    xs = np.zeros((12, num_trials))
+    xf = np.zeros((12, num_trials))
+    xud = np.zeros((12, num_trials))
+    for i in range(0, num_trials - 1):
+        if i > 1000 and i <= 1072:
+            delta[i] = 0.0
+        elif i > 1172:
+            delta[i] = 0.0
+        else:
+            delta[i] = x[theta_ind[i], i] - rot[i]
+
+        G_s = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_s)
+        G_f = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_s)
+        G_ud = ud_func(theta_values, x[theta_ind[i], i], sigma_ud)
 
         if np.isnan(rot[i]):
             xs[:, i + 1] = beta_s * xs[:, i]
             xf[:, i + 1] = beta_f * xf[:, i]
             xud[:, i + 1] = beta_ud * xud[:, i]
         else:
-            xs[:, i + 1] = beta_s * xs[:, i] - alpha_s * delta[i] * G
-            xf[:, i + 1] = beta_f * xf[:, i] - alpha_f * delta[i] * G
-            xud[:, i + 1] = beta_ud * xud[:, i] + alpha_ud * ud_func(
-                theta_values, x[theta_ind[i], i], sigma_ud)
+            xs[:, i + 1] = beta_s * xs[:, i] - alpha_s * delta[i] * G_s
+            xf[:, i + 1] = beta_f * xf[:, i] - alpha_f * delta[i] * G_f
+            xud[:, i + 1] = beta_ud * xud[:, i] + alpha_ud * G_ud
 
-        x[:, i + 1] = np.vstack((w_mix * (xs[:, i + 1] + xf[:, i + 1]),
-                                 (1 - w_mix) * xud[:, i + 1])).mean(0)
+        x[:, i + 1] = xs[:, i + 1] + xf[:, i + 1] + xud[:, i + 1]
 
     return x.T
 
 
-# dir_output = '../fits/'
-# bounds = ((0, 1), (0, 1), (0, 60), (0, 1), (0, 1), (0, 60), (0, 1), (0, 1),
-#           (0, 60), (0, 1))
-# n_boot = 1
-# p = fit(dir_output, simulate_two_state_ud, bounds, n_boot)
+dir_output = '../fits/'
+bounds = ((0, 1), (0, 1), (0, 60), (0, 1), (0, 1), (0, 60), (0, 1), (0, 1),
+          (0, 60))
+n_boot = 1
+p = fit(dir_output, simulate_two_state_ud, bounds, n_boot)
+inspect_fits(simulate_two_state_ud)
 
-inspect_fits()
+# dir_output = '../fits/'
+# bounds = ((0, 1), (0, 1), (0, 60), (0, 1), (0, 1), (0, 60))
+# n_boot = 1
+# p = fit(dir_output, simulate_one_state_ud, bounds, n_boot)
+# inspect_fits(simulate_one_state_ud)
+
+# NOTE: Play around with the use-dependent model
+# p = [0.1, 0.99, 30, 0.5, 0.7, 30, 0.1, 0.99, 30, 0.5]
+# rot = np.concatenate((np.zeros(120 * 4), np.random.normal(0, 2, 120),
+#                         np.random.normal(15, 2,
+#                                         400), np.random.normal(15, 2, 72),
+#                         np.random.normal(15, 2, 100), np.zeros(100)))
+# x_pred = simulate_two_state_ud(p, rot)
+
+# num_trials = rot.shape[0]
+# theta_values = np.linspace(0.0, 330.0, 12) - 150.0
+# theta_train_ind = np.where(theta_values == 0.0)[0][0]
+# theta_ind = theta_train_ind * np.ones(num_trials, dtype=np.int8)
+
+# fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(12, 8))
+# for k in range(12):
+#     ax.plot(x_pred[:, k], '-')
+#     ax.set_ylim([-20, 20])
+# plt.show()
+
+# fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(12, 8))
+# xg_pred = np.nanmean(x_pred[1000:1072, :], 0)
+# ax.plot(theta_values, xg_pred, '-')
+# ax.plot(theta_values, xg_pred, '.')
+# ax.set_ylim([-15, 15])
+# plt.show()
+
+# inspect_boot()

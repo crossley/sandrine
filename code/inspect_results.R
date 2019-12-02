@@ -152,7 +152,7 @@ ggplot(dd, aes(trial, V1, colour=as.factor(cnd))) +
     geom_point(alpha=0.1) +
     facet_wrap(~rot_dir*aware)
 
-## NOTE: take a look at prebaseline
+## NOTE: take a look at prebaseline histograms
 dd <- d[phase == 'Prebaseline',
         mean(Endpoint_Error, na.rm=T),
         .(cnd, trial, rot_dir)]
@@ -160,6 +160,19 @@ ggplot(dd, aes(V1, fill=as.factor(cnd))) +
     geom_histogram(alpha=0.75) +
     facet_wrap(~rot_dir*cnd)
 ggsave('../figures/prebaseline.pdf', width=8, height=6)
+
+
+## NOTE: look at prebaseline bias per target
+dd <- d[phase == 'Prebaseline',
+        .(mean(Endpoint_Error, na.rm=T), sd(Endpoint_Error, na.rm=T)/sqrt(16)),
+        .(cnd, rot_dir, target_deg)]
+ggplot(dd, aes(target_deg, V1, colour=as.factor(cnd))) +
+    geom_point() +
+    geom_line() +
+    geom_errorbar(aes(ymin=V1-V2, ymax=V1+V2)) +
+    facet_wrap(~rot_dir*cnd)
+ggsave('../figures/prebaseline_bias.pdf', width=8, height=6)
+
 
 ## NOTE: Plot generalisation function --- no baseline correction
 dd <- d[phase == "Generalisation",
@@ -256,5 +269,9 @@ d[rot_dir == 'cw' &
 d[rot_dir == 'cw' &
   phase %in% c('Training', 'Generalisation', 'Relearning', 'Washout'),
   Endpoint_Error := -1 * Endpoint_Error]
+
+d[rot_dir == 'cw' &
+  phase %in% c('Training', 'Generalisation', 'Relearning', 'Washout'),
+  bcee := -1 * bcee]
 
 fwrite(d, '../fit_input/master_data.csv')
