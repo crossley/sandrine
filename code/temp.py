@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from scipy.optimize import differential_evolution, minimize
 from scipy.stats import logistic
+from scipy import stats
 import multiprocessing as mp
 import os as os
 
@@ -17,20 +18,41 @@ def bootstrap_ci(x, n, alpha):
     return (ci)
 
 
-def bootstrap_t(x, y, n):
-    t_obs = stats.ttest_ind(x, y).statistic
+# TODO: Work this out
+def bootstrap_t(x_obs, y_obs, x_samp_dist, y_samp_dist, n):
+    d_obs = x_obs - y_obs
 
-    xt = x - x.mean() + np.concatenate((x, y)).mean()
-    yt = y - y.mean() + np.concatenate((x, y)).mean()
+    d_boot = np.zeros(n)
+    xs = np.random.choice(x_samp_dist, n, replace=True)
+    ys = np.random.choice(y_samp_dist, n, replace=True)
+    d_boot = xs - ys
+    d_boot = d_boot - d_boot.mean()  # TODO: ???
 
-    t_boot = np.zeros(n)
-    for i in range(n):
-        xs = np.random.choice(xt, xt.shape, replace=True)
-        ys = np.random.choice(yt, yt.shape, replace=True)
-        t_boot[i] = stats.ttest_ind(xs, ys).statistic
+    # TODO: Is x - y distribution the same as d distribution?
+    # plt.subplot(121)
+    # plt.hist(d_boot)
+    # plt.subplot(122)
+    # plt.hist(x_samp_dist - y_samp_dist)
+    # plt.show()
 
-    p_null = (1 + np.sum(np.abs(t_boot) > np.abs(t_obs))) / (n + 1)
+    p_null = (1 + np.sum(np.abs(d_boot) > np.abs(d_obs))) / (n + 1)
     return (p_null)
+
+
+# def bootstrap_t(x, y, n):
+#     t_obs = stats.ttest_ind(x, y, equal_var=False).statistic
+
+#     xt = x - x.mean() + np.concatenate((x, y)).mean()
+#     yt = y - y.mean() + np.concatenate((x, y)).mean()
+
+#     t_boot = np.zeros(n)
+#     for i in range(n):
+#         xs = np.random.choice(xt, xt.shape, replace=True)
+#         ys = np.random.choice(yt, yt.shape, replace=True)
+#         t_boot[i] = stats.ttest_ind(xs, ys, equal_var=False).statistic
+
+#     p_null = (1 + np.sum(np.abs(t_boot) > np.abs(t_obs))) / (n + 1)
+#     return (p_null)
 
 
 def inspect_boot():
@@ -43,60 +65,103 @@ def inspect_boot():
     dd = []
     cnd = [0, 1, 2]
     rot_dir = ['cw', 'ccw']
+    fig, ax = plt.subplots(nrows=2, ncols=3, figsize=(12, 8))
     for j in rot_dir:
-        fig, ax = plt.subplots(nrows=2, ncols=3, figsize=(12, 8))
         for i in cnd:
-            d = np.loadtxt('../fits/fit_grp_2state_bootstrap_' + str(i) + '_' +
-                           j,
-                           delimiter=',')
-            d['rot_dir'] = rot_dir
+            d = pd.read_csv('../fits/fit_grp_2state_bootstrap_' + str(i) +
+                            '_' + j,
+                            header=None)
+            d.columns = [
+                'alpha_s', 'beta_s', 'sigma_s', 'alpha_f', 'beta_f', 'sigma_f'
+            ]
+            d['rot_dir'] = j
             d['cnd'] = i
             dd.append(d)
 
-            alpha_s = d[:, 0]
-            beta_s = d[:, 1]
-            sigma_s = d[:, 2]
-            alpha_f = d[:, 3]
-            beta_f = d[:, 4]
-            sigma_f = d[:, 5]
+            alpha_s = d['alpha_s'].values
+            beta_s = d['beta_s'].values
+            sigma_s = d['sigma_s'].values
+            alpha_f = d['alpha_f'].values
+            beta_f = d['beta_f'].values
+            sigma_f = d['sigma_f'].values
 
             b = 25
-            a = 0.8
+            a = 0.5
 
-            ax[0, 0].hist(alpha_s, color=colors[i], bins=b, alpha=a)
+            ax[0, 0].hist(alpha_s, color=colors[i], density=True, alpha=a)
             ax[0, 0].set_title('alpha_s')
 
-            ax[0, 1].hist(beta_s, color=colors[i], bins=b, alpha=a)
+            ax[0, 1].hist(beta_s, color=colors[i], density=True, alpha=a)
             ax[0, 1].set_title('beta_s')
 
-            ax[0, 2].hist(sigma_s, color=colors[i], bins=b, alpha=a)
+            ax[0, 2].hist(sigma_s, color=colors[i], density=True, alpha=a)
             ax[0, 2].set_title('sigma_s')
 
-            ax[1, 0].hist(alpha_f, color=colors[i], bins=b, alpha=a)
+            ax[1, 0].hist(alpha_f, color=colors[i], density=True, alpha=a)
             ax[1, 0].set_title('alpha_f')
 
-            ax[1, 1].hist(beta_f, color=colors[i], bins=b, alpha=a)
+            ax[1, 1].hist(beta_f, color=colors[i], density=True, alpha=a)
             ax[1, 1].set_title('beta_f')
 
-            ax[1, 2].hist(sigma_f, color=colors[i], bins=b, alpha=a)
+            ax[1, 2].hist(sigma_f, color=colors[i], density=True, alpha=a)
             ax[1, 2].set_title('sigma_f')
 
-        plt.figlegend(['0', '1', '2'],
-                      loc='lower center',
-                      ncol=5,
-                      labelspacing=0.,
-                      borderaxespad=1)
-        plt.show()
+    plt.figlegend(['0', '1', '2'],
+                  loc='lower center',
+                  ncol=5,
+                  labelspacing=0.,
+                  borderaxespad=1)
+    plt.show()
 
+    # NOTE: Report stats
     dd = pd.concat(dd)
-    for i in dd['cnd'].unique():
-        for j in dd['rot_dir'].unique():
-            for ii in dd['cnd'].unique():
-                for jj in dd['rot_dir'].unique():
-                    x = bootstrap_t(
-                        dd[(dd['cnd'] == i) & (dd['rot_dir'] == j)],
-                        dd[(dd['cnd'] == ii) & (dd['rot_dir'] == jj)], 1000)
-                    print(i, ii, j, jj, x)
+    for j in ['alpha_s', 'beta_s', 'sigma_s', 'alpha_f', 'beta_f', 'sigma_f']:
+        for i in dd['cnd'].unique():
+            xx = dd[(dd['cnd'] == i) & (dd['rot_dir'] == 'cw')][j].values
+            yy = dd[(dd['cnd'] == i) & (dd['rot_dir'] == 'ccw')][j].values
+            x = bootstrap_t(xx.mean(), yy.mean(), xx, yy, 1000)
+            print(j, i, x)
+
+    print('\n')
+    print('\n')
+
+    for j in ['alpha_s', 'beta_s', 'sigma_s', 'alpha_f', 'beta_f', 'sigma_f']:
+        print('\n')
+        for i in dd['rot_dir'].unique():
+            print('\n')
+            xx = dd[(dd['cnd'] == 0) & (dd['rot_dir'] == i)][j].values
+            yy = dd[(dd['cnd'] == 0) & (dd['rot_dir'] == i)][j].values
+            x = bootstrap_t(xx.mean(), yy.mean(), xx, yy, 1000)
+            print(j, i, '00', x)
+
+            xx = dd[(dd['cnd'] == 1) & (dd['rot_dir'] == i)][j].values
+            yy = dd[(dd['cnd'] == 1) & (dd['rot_dir'] == i)][j].values
+            x = bootstrap_t(xx.mean(), yy.mean(), xx, yy, 1000)
+            print(j, i, '11', x)
+
+            xx = dd[(dd['cnd'] == 2) & (dd['rot_dir'] == i)][j].values
+            yy = dd[(dd['cnd'] == 2) & (dd['rot_dir'] == i)][j].values
+            x = bootstrap_t(xx.mean(), yy.mean(), xx, yy, 1000)
+            print(j, i, '22', x)
+
+            xx = dd[(dd['cnd'] == 0) & (dd['rot_dir'] == i)][j].values
+            yy = dd[(dd['cnd'] == 1) & (dd['rot_dir'] == i)][j].values
+            x = bootstrap_t(xx.mean(), yy.mean(), xx, yy, 1000)
+            print(j, i, '01', x)
+
+            xx = dd[(dd['cnd'] == 0) & (dd['rot_dir'] == i)][j].values
+            yy = dd[(dd['cnd'] == 2) & (dd['rot_dir'] == i)][j].values
+            x = bootstrap_t(xx.mean(), yy.mean(), xx, yy, 1000)
+            print(j, i, '02', x)
+
+            xx = dd[(dd['cnd'] == 1) & (dd['rot_dir'] == i)][j].values
+            yy = dd[(dd['cnd'] == 2) & (dd['rot_dir'] == i)][j].values
+            x = bootstrap_t(xx.mean(), yy.mean(), xx, yy, 1000)
+            print(j, i, '12', x)
+
+        # x = bootstrap_t(xx, yy, 1000)
+        # x = stats.ks_2samp(xx, yy)
+        # x = x[1]
 
 
 def inspect_fits(sim_func, p=None):
@@ -229,6 +294,7 @@ def obj_func(params, *args):
     rot = args[1]
     sim_func = args[2]
 
+    # hack to impose parameter constraints
     if len(params) > 3:
         alpha_s = params[0]
         beta_s = params[1]
@@ -244,10 +310,11 @@ def obj_func(params, *args):
 
     sse_rec = np.zeros(12)
     for i in range(12):
-        # TODO: pick indices for cost function
+        # pick trial indices for cost function
         fit_inds = np.concatenate(
-            (np.arange(600, 700, 1), np.arange(1000, 1072,
+            (np.arange(500, 700, 1), np.arange(1000, 1072,
                                                1), np.arange(1172, 1272, 1)))
+        # fit_inds = np.arange(0, 1272, 1)
         sse_rec[i] = (np.nansum((x_obs[fit_inds, i] - x_pred[fit_inds, i])**2))
         sse = np.nansum(sse_rec)
 
@@ -323,6 +390,7 @@ def simulate_two_state(p, rot):
     g_sigma_f = p[5]
 
     num_trials = rot.shape[0]
+
     theta_values = np.linspace(0.0, 330.0, 12) - 150.0
     theta_train_ind = np.where(theta_values == 0.0)[0][0]
     theta_ind = theta_train_ind * np.ones(num_trials, dtype=np.int8)
@@ -339,18 +407,19 @@ def simulate_two_state(p, rot):
         else:
             delta[i] = x[theta_ind[i], i] - rot[i]
 
-        Gs = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_s)
-        Gf = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_f)
+        G_s = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_s)
+        G_f = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_s)
+
         if np.isnan(rot[i]):
             xs[:, i + 1] = beta_s * xs[:, i]
             xf[:, i + 1] = beta_f * xf[:, i]
         else:
-            xs[:, i + 1] = beta_s * xs[:, i] - alpha_s * delta[i] * Gs
-            xf[:, i + 1] = beta_f * xf[:, i] - alpha_f * delta[i] * Gf
+            xs[:, i + 1] = beta_s * xs[:, i] - alpha_s * delta[i] * G_s
+            xf[:, i + 1] = beta_f * xf[:, i] - alpha_f * delta[i] * G_f
 
         x[:, i + 1] = xs[:, i + 1] + xf[:, i + 1]
 
-        return x.T
+    return x.T
 
 
 def simulate_one_state_ud(p, rot):
@@ -444,42 +513,22 @@ def simulate_two_state_ud(p, rot):
 
 
 dir_output = '../fits/'
-bounds = ((0, 1), (0, 1), (0, 60), (0, 1), (0, 1), (0, 60), (0, 1), (0, 1),
-          (0, 60))
-n_boot = 1
-p = fit(dir_output, simulate_two_state_ud, bounds, n_boot)
-inspect_fits(simulate_two_state_ud)
+
+bounds = ((0, 1), (0, 1), (0, 60), (0, 1), (0, 1), (0, 60))
+n_boot = 50
+p = fit(dir_output, simulate_two_state, bounds, n_boot)
+# inspect_fits(simulate_two_state) # TODO: modify this func to accommodate boot
+
+# bounds = ((0, 1), (0, 1), (0, 60), (0, 1), (0, 1), (0, 60), (0, 1), (0, 1),
+#           (0, 60))
+# n_boot = 1
+# p = fit(dir_output, simulate_two_state_ud, bounds, n_boot)
+# inspect_fits(simulate_two_state_ud)
 
 # dir_output = '../fits/'
 # bounds = ((0, 1), (0, 1), (0, 60), (0, 1), (0, 1), (0, 60))
 # n_boot = 1
 # p = fit(dir_output, simulate_one_state_ud, bounds, n_boot)
 # inspect_fits(simulate_one_state_ud)
-
-# NOTE: Play around with the use-dependent model
-# p = [0.1, 0.99, 30, 0.5, 0.7, 30, 0.1, 0.99, 30, 0.5]
-# rot = np.concatenate((np.zeros(120 * 4), np.random.normal(0, 2, 120),
-#                         np.random.normal(15, 2,
-#                                         400), np.random.normal(15, 2, 72),
-#                         np.random.normal(15, 2, 100), np.zeros(100)))
-# x_pred = simulate_two_state_ud(p, rot)
-
-# num_trials = rot.shape[0]
-# theta_values = np.linspace(0.0, 330.0, 12) - 150.0
-# theta_train_ind = np.where(theta_values == 0.0)[0][0]
-# theta_ind = theta_train_ind * np.ones(num_trials, dtype=np.int8)
-
-# fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(12, 8))
-# for k in range(12):
-#     ax.plot(x_pred[:, k], '-')
-#     ax.set_ylim([-20, 20])
-# plt.show()
-
-# fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(12, 8))
-# xg_pred = np.nanmean(x_pred[1000:1072, :], 0)
-# ax.plot(theta_values, xg_pred, '-')
-# ax.plot(theta_values, xg_pred, '.')
-# ax.set_ylim([-15, 15])
-# plt.show()
 
 # inspect_boot()
