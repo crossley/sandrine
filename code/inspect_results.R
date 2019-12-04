@@ -10,16 +10,22 @@ col_names <- c("Target", "Trial_Phase", "Appl_Perturb",
                "imv_Error_Mean", "Endpoint_Error_Mean",
                "MT", "RT", "Max_Vel")
 
+phase_names_f <- c('Prebaseline_SubjData', 'Familiarisation_SubjData',
+                 'Baseline_NFB_SubjData', 'Baseline_S_SubjData',
+                 'Postbaseline_SubjData', 'Training_SubjData',
+                 'Generalisation_SubjData', 'Relearning_SubjData',
+                 'Washout_SubjData')
+
 phase_names <- c('Prebaseline', 'Familiarisation', 'Baseline_NFB', 'Baseline_S',
-               'Postbaseline', 'Training', 'Generalisation', 'Relearning',
-               'Washout')
+                 'Postbaseline', 'Training', 'Generalisation', 'Relearning',
+                 'Washout')
 
 phase_order <- 1:9
 
 ldf_rec <- list()
-for (i in 1:length(phase_names)) {
+for (i in 1:length(phase_names_f)) {
     f_names <- list.files(paste('../data/', sep=''),
-                          pattern=paste(phase_names[i]),
+                          pattern=paste(phase_names_f[i]),
                           full.names=TRUE)
 
     ldf <- lapply(f_names, function(z) {z<-fread(z); setnames(z,col_names)})
