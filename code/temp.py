@@ -18,7 +18,6 @@ def bootstrap_ci(x, n, alpha):
     return (ci)
 
 
-# TODO: Work this out
 def bootstrap_t(x_obs, y_obs, x_samp_dist, y_samp_dist, n):
     d_obs = x_obs - y_obs
 
@@ -26,14 +25,7 @@ def bootstrap_t(x_obs, y_obs, x_samp_dist, y_samp_dist, n):
     xs = np.random.choice(x_samp_dist, n, replace=True)
     ys = np.random.choice(y_samp_dist, n, replace=True)
     d_boot = xs - ys
-    d_boot = d_boot - d_boot.mean()  # TODO: ???
-
-    # TODO: Is x - y distribution the same as d distribution?
-    # plt.subplot(121)
-    # plt.hist(d_boot)
-    # plt.subplot(122)
-    # plt.hist(x_samp_dist - y_samp_dist)
-    # plt.show()
+    d_boot = d_boot - d_boot.mean()
 
     p_null = (1 + np.sum(np.abs(d_boot) > np.abs(d_obs))) / (n + 1)
     return (p_null)
@@ -66,15 +58,15 @@ def inspect_boot():
     cnd = [0, 1, 2]
     rot_dir = ['cw', 'ccw']
     fig, ax = plt.subplots(nrows=2, ncols=3, figsize=(12, 8))
-    for j in rot_dir:
+    for j in range(len(rot_dir)):
         for i in cnd:
             d = pd.read_csv('../fits/fit_grp_2state_bootstrap_' + str(i) +
-                            '_' + j,
+                            '_' + rot_dir[j],
                             header=None)
             d.columns = [
                 'alpha_s', 'beta_s', 'sigma_s', 'alpha_f', 'beta_f', 'sigma_f'
             ]
-            d['rot_dir'] = j
+            d['rot_dir'] = rot_dir[j]
             d['cnd'] = i
             dd.append(d)
 
@@ -88,23 +80,79 @@ def inspect_boot():
             b = 25
             a = 0.5
 
-            ax[0, 0].hist(alpha_s, color=colors[i], density=True, alpha=a)
+            alpha = 0.05
+
+            ci = np.reshape(
+                np.percentile(alpha_s, [100 * (alpha / 2), 100 * (1.0 - alpha / 2)]),
+                (2, 1))
+            ax[0, 0].bar(0 + i * len(cnd) + j,
+                         alpha_s.mean(),
+                         color=colors[i])
+            ax[0, 0].plot([0 + i * len(cnd) + j, 0 + i * len(cnd) + j], ci, 'k')
             ax[0, 0].set_title('alpha_s')
 
-            ax[0, 1].hist(beta_s, color=colors[i], density=True, alpha=a)
+            ci = np.reshape(
+                np.percentile(beta_s, [100 * (alpha / 2), 100 * (1.0 - alpha / 2)]),
+                (2, 1))
+            ax[0, 1].bar(0 + i * len(cnd) + j,
+                         beta_s.mean(),
+                         color=colors[i])
+            ax[0, 1].plot([0 + i * len(cnd) + j, 0 + i * len(cnd) + j], ci, 'k')
             ax[0, 1].set_title('beta_s')
 
-            ax[0, 2].hist(sigma_s, color=colors[i], density=True, alpha=a)
+            ci = np.reshape(
+                np.percentile(sigma_s, [100 * (alpha / 2), 100 * (1.0 - alpha / 2)]),
+                (2, 1))
+            ax[0, 2].bar(0 + i * len(cnd) + j,
+                         sigma_s.mean(),
+                         color=colors[i])
+            ax[0, 2].plot([0 + i * len(cnd) + j, 0 + i * len(cnd) + j], ci, 'k')
             ax[0, 2].set_title('sigma_s')
 
-            ax[1, 0].hist(alpha_f, color=colors[i], density=True, alpha=a)
+            ci = np.reshape(
+                np.percentile(alpha_f, [100 * (alpha / 2), 100 * (1.0 - alpha / 2)]),
+                (2, 1))
+            ax[1, 0].bar(0 + i * len(cnd) + j,
+                         alpha_f.mean(),
+                         color=colors[i])
+            ax[1, 0].plot([0 + i * len(cnd) + j, 0 + i * len(cnd) + j], ci, 'k')
             ax[1, 0].set_title('alpha_f')
 
-            ax[1, 1].hist(beta_f, color=colors[i], density=True, alpha=a)
+            ci = np.reshape(
+                np.percentile(beta_f, [100 * (alpha / 2), 100 * (1.0 - alpha / 2)]),
+                (2, 1))
+            ax[1, 1].bar(0 + i * len(cnd) + j,
+                         beta_f.mean(),
+                         color=colors[i])
+            ax[1, 1].plot([0 + i * len(cnd) + j, 0 + i * len(cnd) + j], ci, 'k')
             ax[1, 1].set_title('beta_f')
 
-            ax[1, 2].hist(sigma_f, color=colors[i], density=True, alpha=a)
+            ci = np.reshape(
+                np.percentile(sigma_f, [100 * (alpha / 2), 100 * (1.0 - alpha / 2)]),
+                (2, 1))
+            ax[1, 2].bar(0 + i * len(cnd) + j,
+                         sigma_f.mean(),
+                         color=colors[i])
+            ax[1, 2].plot([0 + i * len(cnd) + j, 0 + i * len(cnd) + j], ci, 'k')
             ax[1, 2].set_title('sigma_f')
+
+            # ax[0, 0].hist(alpha_s, color=colors[i], density=True, alpha=a)
+            # ax[0, 0].set_title('alpha_s')
+
+            # ax[0, 1].hist(beta_s, color=colors[i], density=True, alpha=a)
+            # ax[0, 1].set_title('beta_s')
+
+            # ax[0, 2].hist(sigma_s, color=colors[i], density=True, alpha=a)
+            # ax[0, 2].set_title('sigma_s')
+
+            # ax[1, 0].hist(alpha_f, color=colors[i], density=True, alpha=a)
+            # ax[1, 0].set_title('alpha_f')
+
+            # ax[1, 1].hist(beta_f, color=colors[i], density=True, alpha=a)
+            # ax[1, 1].set_title('beta_f')
+
+            # ax[1, 2].hist(sigma_f, color=colors[i], density=True, alpha=a)
+            # ax[1, 2].set_title('sigma_f')
 
     plt.figlegend(['0', '1', '2'],
                   loc='lower center',
@@ -256,16 +304,16 @@ def fit(dir_output, sim_func, bounds, n_boot):
                                         'trial']).mean()
                     x_obs.reset_index(inplace=True)
 
-                x_obs = x_obs[["Endpoint_Error", "target_deg", "trial"]]
-                x_obs = x_obs.pivot(index="trial",
-                                    columns="target_deg",
-                                    values="Endpoint_Error")
-                # TODO: is bcee an okay column to use?
-                # TODO: what's up with the missing data in some cnds (plots)?
-                # x_obs = x_obs[["bcee", "target_deg", "trial"]]
+                # x_obs = x_obs[["Endpoint_Error", "target_deg", "trial"]]
                 # x_obs = x_obs.pivot(index="trial",
                 #                     columns="target_deg",
-                #                     values="bcee")
+                #                     values="Endpoint_Error")
+                # TODO: is bcee an okay column to use?
+                # TODO: what's up with the missing data in some cnds (plots)?
+                x_obs = x_obs[["bcee", "target_deg", "trial"]]
+                x_obs = x_obs.pivot(index="trial",
+                                    columns="target_deg",
+                                    values="bcee")
 
                 x_obs = x_obs.values
 
@@ -312,7 +360,7 @@ def obj_func(params, *args):
     for i in range(12):
         # pick trial indices for cost function
         fit_inds = np.concatenate(
-            (np.arange(500, 700, 1), np.arange(1000, 1072,
+            (np.arange(600, 700, 1), np.arange(1000, 1072,
                                                1), np.arange(1172, 1272, 1)))
         # fit_inds = np.arange(0, 1272, 1)
         sse_rec[i] = (np.nansum((x_obs[fit_inds, i] - x_pred[fit_inds, i])**2))
@@ -408,7 +456,7 @@ def simulate_two_state(p, rot):
             delta[i] = x[theta_ind[i], i] - rot[i]
 
         G_s = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_s)
-        G_f = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_s)
+        G_f = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_f)
 
         if np.isnan(rot[i]):
             xs[:, i + 1] = beta_s * xs[:, i]
@@ -495,7 +543,7 @@ def simulate_two_state_ud(p, rot):
             delta[i] = x[theta_ind[i], i] - rot[i]
 
         G_s = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_s)
-        G_f = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_s)
+        G_f = g_func(theta_values, theta_values[theta_ind[i]], g_sigma_f)
         G_ud = ud_func(theta_values, x[theta_ind[i], i], sigma_ud)
 
         if np.isnan(rot[i]):
@@ -514,9 +562,9 @@ def simulate_two_state_ud(p, rot):
 
 dir_output = '../fits/'
 
-bounds = ((0, 1), (0, 1), (0, 60), (0, 1), (0, 1), (0, 60))
-n_boot = 50
-p = fit(dir_output, simulate_two_state, bounds, n_boot)
+# bounds = ((0, 1), (0, 1), (0, 60), (0, 1), (0, 1), (0, 60))
+# n_boot = 1
+# p = fit(dir_output, simulate_two_state, bounds, n_boot)
 # inspect_fits(simulate_two_state) # TODO: modify this func to accommodate boot
 
 # bounds = ((0, 1), (0, 1), (0, 60), (0, 1), (0, 1), (0, 60), (0, 1), (0, 1),
@@ -531,4 +579,4 @@ p = fit(dir_output, simulate_two_state, bounds, n_boot)
 # p = fit(dir_output, simulate_one_state_ud, bounds, n_boot)
 # inspect_fits(simulate_one_state_ud)
 
-# inspect_boot()
+inspect_boot()

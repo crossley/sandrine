@@ -108,8 +108,8 @@ d[, ee_mean_correction_nfb := ee_mean[which(phase=="Baseline_NFB")][1], .(Target
 
 ## NOTE: Perform baseline correction
 d[, bcee := Endpoint_Error]
-d[phase %in% c("Generalisation", "Washout"), bcee := Endpoint_Error - ee_mean_correction_nfb]
-d[phase %in% c("Postbaseline", "Training", "Relearning"), bcee := Endpoint_Error - ee_mean_correction_fb]
+d[phase %in% c("Generalisation", "Washout"), bcee := Endpoint_Error - ee_mean_correction_nfb] # ???
+d[phase %in% c("Postbaseline", "Training", "Relearning"), bcee := Endpoint_Error - ee_mean_correction_nfb]
 
 ## NOTE: plot all trials collapsed over CW / CCW
 dd <- d[, .(mean(Endpoint_Error, na.rm=T), sd(Endpoint_Error, na.rm=T)/sqrt(16)), .(cnd, trial)]
